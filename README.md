@@ -108,7 +108,8 @@ memory_alerts = false        # only disk alerts
 
 [worktrees]
 roots = ["~/dev", "~/work"]
-managed = [{ path = "~/orca/workspaces", name = "Orca" }]   # shown as a hint
+# worktrees another tool manages: removed through that tool so it stays in sync
+managed = [{ path = "~/orca/workspaces", name = "Orca", remove = ["orca", "worktree", "rm", "--worktree", "path:{path}"] }]
 
 [apps]
 keep = ["MATLAB"]            # never suggest these

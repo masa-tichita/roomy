@@ -3,7 +3,7 @@
 use super::Ctx;
 use crate::i18n::{Msg, m, mf};
 use crate::model::{Action, Candidate, Excluded, Safety};
-use crate::sys::{days_since, expand, run, tilde};
+use crate::sys::{days_since, expand, run, tilde, which};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -250,12 +250,16 @@ pub fn evaluate(ctx: &Ctx, w: &Path) -> Result<Candidate, Msg> {
     }
     evidence.push(mf("wt.idle", &[("days", &idle)]));
 
-    if let Some(default) =
-        git(w, &["rev-parse", "--abbrev-ref", "origin/HEAD"]).map(|s| s.trim().to_string())
-        && !default.is_empty()
-        && git(w, &["merge-base", "--is-ancestor", "HEAD", &default]).is_some()
-    {
+    let merged_into = git(w, &["rev-parse", "--abbrev-ref", "origin/HEAD"])
+        .map(|s| s.trim().to_string())
+        .filter(|d| !d.is_empty() && git(w, &["merge-base", "--is-ancestor", "HEAD", d]).is_some());
+    if let Some(default) = merged_into {
         evidence.push(mf("wt.merged", &[("branch", &default)]));
+    } else if ctx.cfg.worktrees.check_pull_requests
+        && let Some(pr) = merged_pull_request(w, &branch)
+    {
+        // Squash and rebase merges leave HEAD outside the default branch.
+        evidence.push(mf("wt.pr_merged", &[("pr", &pr)]));
     }
 
     let main = git(
@@ -286,6 +290,17 @@ pub fn evaluate(ctx: &Ctx, w: &Path) -> Result<Candidate, Msg> {
         };
         notes.insert(0, note);
     }
+    let mut argv: Vec<String> = [
+        "git",
+        "-C",
+        &main.to_string_lossy(),
+        "worktree",
+        "remove",
+        &w.to_string_lossy(),
+    ]
+    .iter()
+    .map(ToString::to_string)
+    .collect();
     if let Some(m) = ctx
         .cfg
         .worktrees
@@ -293,8 +308,20 @@ pub fn evaluate(ctx: &Ctx, w: &Path) -> Result<Candidate, Msg> {
         .iter()
         .find(|m| w.starts_with(expand(&m.path)))
     {
-        safety = Safety::Review;
-        notes.push(mf("wt.managed", &[("tool", &m.name)]));
+        if let Some(cmd) = managed_command(m, w) {
+            // The tool removes it, so its own records stay in sync. This replaces
+            // "the branch stays", which the tool may not honor.
+            if let Some(last) = notes.last_mut() {
+                *last = mf(
+                    "wt.removed_by",
+                    &[("tool", &m.name), ("cmd", &cmd.join(" "))],
+                );
+            }
+            argv = cmd;
+        } else {
+            safety = Safety::Review;
+            notes.push(mf("wt.managed", &[("tool", &m.name)]));
+        }
     }
 
     let name = w
@@ -315,21 +342,48 @@ pub fn evaluate(ctx: &Ctx, w: &Path) -> Result<Candidate, Msg> {
         safety,
         evidence,
         notes,
-        action: Action::Command {
-            argv: [
-                "git",
-                "-C",
-                &main.to_string_lossy(),
-                "worktree",
-                "remove",
-                &w.to_string_lossy(),
-            ]
-            .iter()
-            .map(ToString::to_string)
-            .collect(),
-            cwd: None,
-        },
+        action: Action::Command { argv, cwd: None },
     })
+}
+
+/// The managed tool's removal command for this worktree, if configured and installed.
+pub fn managed_command(m: &crate::config::Managed, w: &Path) -> Option<Vec<String>> {
+    let program = m.remove.first()?;
+    which(program)?;
+    let path = w.to_string_lossy();
+    Some(
+        m.remove
+            .iter()
+            .map(|a| a.replace("{path}", &path))
+            .collect(),
+    )
+}
+
+/// Number of the merged pull request whose head is `branch`, asked from GitHub with `gh`.
+fn merged_pull_request(w: &Path, branch: &str) -> Option<u64> {
+    if branch.is_empty() || which("gh").is_none() {
+        return None;
+    }
+    let out = run(
+        &[
+            "gh",
+            "pr",
+            "list",
+            "--head",
+            branch,
+            "--state",
+            "merged",
+            "--limit",
+            "1",
+            "--json",
+            "number",
+            "--jq",
+            ".[0].number",
+        ],
+        Some(w),
+        Duration::from_secs(15),
+    )?;
+    out.stdout.trim().parse().ok().filter(|_| out.ok)
 }
 
 #[cfg(test)]
@@ -552,8 +606,54 @@ mod tests {
                 .to_string_lossy()
                 .into_owned(),
             name: "Orca".into(),
+            remove: vec![],
         });
         let c = evaluate(&ctx_with(&cfg, &sizer, vec![]), &wt).unwrap();
         assert_eq!(c.safety, Safety::Review);
+    }
+
+    #[test]
+    fn managed_folder_with_a_removal_command_uses_it() {
+        let (d, _repo, wt) = setup();
+        let (mut cfg, sizer) = base();
+        cfg.worktrees.check_pull_requests = false;
+        cfg.worktrees.managed.push(crate::config::Managed {
+            path: d
+                .path()
+                .canonicalize()
+                .unwrap()
+                .to_string_lossy()
+                .into_owned(),
+            name: "Tool".into(),
+            // `true` exists on every Mac, standing in for e.g. `orca worktree rm`.
+            remove: vec!["true".into(), "rm".into(), "path:{path}".into()],
+        });
+        let c = evaluate(&ctx_with(&cfg, &sizer, vec![]), &wt).unwrap();
+        assert_eq!(
+            c.safety,
+            Safety::Safe,
+            "the tool keeps its own records in sync"
+        );
+        let Action::Command { argv, .. } = &c.action else {
+            panic!("{:?}", c.action)
+        };
+        assert_eq!(
+            argv,
+            &vec![
+                "true".to_string(),
+                "rm".into(),
+                format!("path:{}", wt.display())
+            ]
+        );
+    }
+
+    #[test]
+    fn missing_removal_tool_falls_back_to_git() {
+        let m = crate::config::Managed {
+            path: "/x".into(),
+            name: "Gone".into(),
+            remove: vec!["definitely-not-installed-xyz".into(), "{path}".into()],
+        };
+        assert_eq!(managed_command(&m, Path::new("/x/wt")), None);
     }
 }

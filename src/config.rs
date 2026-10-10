@@ -77,14 +77,21 @@ pub struct Worktrees {
     pub roots: Vec<String>,
     /// Worktrees touched more recently than this are left alone.
     pub idle_days: i64,
-    /// Folders managed by another tool, shown as a hint ("remove it from <name>").
+    /// Folders managed by another tool (e.g. Orca), optionally with its removal command.
     pub managed: Vec<Managed>,
+    /// Ask `gh` whether a branch's pull request was merged (catches squash merges).
+    pub check_pull_requests: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Managed {
     pub path: String,
     pub name: String,
+    /// Command that removes a worktree through the tool, `{path}` replaced by its path,
+    /// e.g. `["orca", "worktree", "rm", "--worktree", "path:{path}"]`. Without it, worktrees
+    /// here are marked "review" and removed with `git worktree remove`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub remove: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -226,6 +233,7 @@ impl Default for Worktrees {
             ]),
             idle_days: 7,
             managed: vec![],
+            check_pull_requests: true,
         }
     }
 }

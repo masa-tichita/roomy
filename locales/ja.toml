@@ -91,6 +91,8 @@
 "wt.unique_files" = "消えてしまう Git 管理外のファイル: {files}"
 "wt.unique_files_more" = "消えてしまう Git 管理外のファイル: {files} 他 {n} 件"
 "wt.managed" = "{tool} が管理しています。{tool} 側から削除するのがおすすめです。"
+"wt.pr_merged" = "PR #{pr} はマージ済み"
+"wt.removed_by" = "{tool} 経由で削除（`{cmd}`）。{tool} の記録も更新され、マージ済みのブランチは削除されることがある。"
 "wt.in_use" = "使用中（プロセスがこの中で作業中）"
 "wt.git_failed" = "git で読めませんでした"
 "wt.dirty" = "未コミットの変更 {n} 件"

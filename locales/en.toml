@@ -92,6 +92,8 @@
 "wt.unique_files" = "Files outside Git that will be lost: {files}"
 "wt.unique_files_more" = "Files outside Git that will be lost: {files} and {n} more"
 "wt.managed" = "Managed by {tool}; consider removing it from {tool} instead."
+"wt.pr_merged" = "pull request #{pr} merged"
+"wt.removed_by" = "Removed through {tool} (`{cmd}`), which keeps its records in sync and may also delete the merged branch."
 "wt.in_use" = "in use (a process is working in it)"
 "wt.git_failed" = "git could not read it"
 "wt.dirty" = "{n} uncommitted changes"

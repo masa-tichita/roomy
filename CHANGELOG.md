@@ -10,6 +10,9 @@ All notable changes are documented here. The format follows
 
 - `[service] notifications = false` mutes the background service without stopping it;
   `[service] memory_alerts = false` keeps only disk alerts. `ROOMY_NO_NOTIFY=1` mutes everything.
+- Worktrees in folders another tool manages can be removed through that tool
+  (`[[worktrees.managed]] remove = ["orca", "worktree", "rm", "--worktree", "path:{path}"]`).
+- Worktree evidence shows a merged pull request (via `gh`), which catches squash merges.
 
 ### Changed
 

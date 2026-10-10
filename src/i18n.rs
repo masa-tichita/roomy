@@ -227,7 +227,9 @@ mod tests {
                 .skip(1)
                 .filter_map(|p| p.split_once('}').map(|x| x.0.to_string()))
                 .collect();
+            // A translation may use a placeholder more than once.
             v.sort();
+            v.dedup();
             v
         };
         for (k, v) in &en {
