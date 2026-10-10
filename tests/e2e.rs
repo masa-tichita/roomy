@@ -507,7 +507,20 @@ fn clones_show_what_removal_really_frees() {
     assert!(bytes >= 21 << 20, "{c}");
     assert!((1 << 20..3 << 20).contains(&reclaimable), "{c}");
     assert_eq!(r["reclaimable"]["safe"].as_u64(), Some(reclaimable));
-    assert!(stdout(&sb.roomy(&["report"])).contains("frees about"));
+    // The report leads with what removal frees and mentions the allocated size second.
+    let text = stdout(&sb.roomy(&["report"]));
+    let line = text
+        .lines()
+        .find(|l| l.contains("Clones"))
+        .unwrap_or_default();
+    assert!(
+        !line.contains(" 21 MB") && !line.contains(" 22 MB"),
+        "{text}"
+    );
+    assert!(
+        text.contains("on disk; the difference is shared with APFS clones"),
+        "{text}"
+    );
 
     let p = json(&sb.roomy(&["clean", "test.clones", "--json"]));
     assert_eq!(p["total_bytes"].as_u64(), Some(bytes));

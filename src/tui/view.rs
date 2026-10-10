@@ -337,10 +337,13 @@ fn draw_candidates(f: &mut Frame, app: &mut App, area: Rect) {
                 Span::raw(" ")
             };
             let mut title = vec![Span::styled(c.title.render(), th.fg(th.text))];
-            if let Some(b) = c.frees_less() {
+            if let Some(b) = c.allocated_if_different() {
                 title.push(Span::styled(
-                    format!("  {}", tf("size.frees_short", &[("bytes", &fmt_bytes(b))])),
-                    th.fg(th.review),
+                    format!(
+                        "  {}",
+                        tf("size.allocated_short", &[("bytes", &fmt_bytes(b))])
+                    ),
+                    th.fg(th.dim),
                 ));
             }
             if let Some(tg) = tag(c) {
@@ -348,7 +351,7 @@ fn draw_candidates(f: &mut Frame, app: &mut App, area: Rect) {
             }
             Row::new(vec![
                 Cell::from(mark),
-                Cell::from(Line::from(fmt_bytes(c.bytes)).alignment(Alignment::Right)),
+                Cell::from(Line::from(fmt_bytes(c.frees())).alignment(Alignment::Right)),
                 Cell::from(safety_dot(app, c)),
                 Cell::from(Line::from(title)),
                 Cell::from(Span::styled(c.category.render(), th.fg(th.dim))),
@@ -672,7 +675,7 @@ fn draw_details(f: &mut Frame, app: &App) {
     let th = &app.theme;
     let mut lines = vec![
         Line::from(vec![
-            Span::styled(fmt_bytes(c.bytes), th.bold(th.text)),
+            Span::styled(fmt_bytes(c.frees()), th.bold(th.text)),
             Span::raw("  "),
             safety_dot(app, c),
             Span::raw(" "),
@@ -693,12 +696,12 @@ fn draw_details(f: &mut Frame, app: &App) {
         Line::styled(c.path.clone(), th.fg(th.dim)),
         Line::raw(""),
     ];
-    if let Some(b) = c.frees_less() {
+    if let Some(b) = c.allocated_if_different() {
         lines.insert(
             1,
             Line::styled(
-                tf("size.frees", &[("bytes", &fmt_bytes(b))]),
-                th.fg(th.review),
+                tf("size.allocated", &[("bytes", &fmt_bytes(b))]),
+                th.fg(th.dim),
             ),
         );
     }
@@ -732,13 +735,16 @@ fn draw_confirm(f: &mut Frame, app: &App) {
     let mut lines = vec![];
     for (_, c) in &plan.items {
         let mut row = vec![
-            Span::styled(format!("{:>9}  ", fmt_bytes(c.bytes)), th.bold(th.text)),
+            Span::styled(format!("{:>9}  ", fmt_bytes(c.frees())), th.bold(th.text)),
             Span::raw(c.title.render()),
         ];
-        if let Some(b) = c.frees_less() {
+        if let Some(b) = c.allocated_if_different() {
             row.push(Span::styled(
-                format!("  {}", tf("size.frees_short", &[("bytes", &fmt_bytes(b))])),
-                th.fg(th.review),
+                format!(
+                    "  {}",
+                    tf("size.allocated_short", &[("bytes", &fmt_bytes(b))])
+                ),
+                th.fg(th.dim),
             ));
         }
         lines.push(Line::from(row));

@@ -44,8 +44,8 @@
 "report.excluded_count" = "{n} 個の worktree は対象外にしました（使用中・未 push・最近使用など）。理由は `roomy report -v`。"
 "report.skipped_protected" = "フルディスクアクセスが無いため、保護フォルダ（書類・ダウンロード・他アプリのデータ）は走査していません。`roomy doctor` を参照。"
 "report.unreadable" = "{n} 個のフォルダを読めませんでした（権限）。`roomy doctor` を参照。"
-"size.frees" = "実際に空くのは約 {bytes}（残りは APFS クローンと共有）"
-"size.frees_short" = "実際は {bytes}"
+"size.allocated" = "ディスク上は {bytes}（差分は APFS クローンと共有していて空かない）"
+"size.allocated_short" = "（ディスク上 {bytes}）"
 "report.next" = "削除は `roomy clean <番号…>` または `roomy clean --all-safe`。-n で事前確認。"
 
 "rule.running" = "使用中: {what}"

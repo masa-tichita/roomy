@@ -198,16 +198,16 @@ pub fn report(r: &Report, verbose: bool) {
         println!(
             "  {}  {}  {}  {}  {}",
             pad_left(&(i + 1).to_string(), 2),
-            pad_left(&fmt_bytes(c.bytes), 8),
+            pad_left(&fmt_bytes(c.frees()), 8),
             safety_label(&s, c.safety),
             s.dim(&pad(&c.category.render(), catw)),
             c.title
         );
         let indent = " ".repeat(26 + catw);
-        if let Some(b) = c.frees_less() {
+        if let Some(b) = c.allocated_if_different() {
             println!(
                 "{indent}{}",
-                s.yellow(&tf("size.frees", &[("bytes", &fmt_bytes(b))]))
+                s.dim(&tf("size.allocated", &[("bytes", &fmt_bytes(b))]))
             );
         }
         if !c.evidence.is_empty() {
@@ -403,14 +403,14 @@ pub fn explain(r: &Report, target: &str, max_paths: usize) {
     );
     println!(
         "{}  {}  {}",
-        fmt_bytes(c.bytes),
+        fmt_bytes(c.frees()),
         safety_label(&s, c.safety),
         s.dim(&c.category.render())
     );
-    if let Some(b) = c.frees_less() {
+    if let Some(b) = c.allocated_if_different() {
         println!(
             "{}",
-            s.yellow(&tf("size.frees", &[("bytes", &fmt_bytes(b))]))
+            s.dim(&tf("size.allocated", &[("bytes", &fmt_bytes(b))]))
         );
     }
     println!("{}", s.dim(&c.path));

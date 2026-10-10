@@ -45,8 +45,8 @@
 "report.excluded_count" = "{n} worktrees were left alone (in use, unpushed, recent…). `roomy report -v` shows why."
 "report.skipped_protected" = "Protected folders (Documents, Downloads, other apps' data) were skipped because roomy has no Full Disk Access. See `roomy doctor`."
 "report.unreadable" = "{n} folders could not be read (permissions). See `roomy doctor`."
-"size.frees" = "frees about {bytes}; the rest is shared with APFS clones"
-"size.frees_short" = "frees {bytes}"
+"size.allocated" = "{bytes} on disk; the difference is shared with APFS clones and stays"
+"size.allocated_short" = "of {bytes} on disk"
 "report.next" = "Remove with `roomy clean <number…>` or `roomy clean --all-safe`. Add -n to preview."
 
 "rule.running" = "in use: {what}"

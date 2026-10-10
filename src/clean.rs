@@ -126,13 +126,13 @@ pub fn run(cfg: &Config, opts: &Opts) -> anyhow::Result<i32> {
         println!(
             "  {:>2}  {}  {}",
             i + 1,
-            sys::pad_left(&fmt_bytes(c.bytes), 9),
+            sys::pad_left(&fmt_bytes(c.frees()), 9),
             c.title
         );
-        if let Some(r) = c.frees_less() {
+        if let Some(b) = c.allocated_if_different() {
             println!(
                 "      {}",
-                s.dim(&tf("size.frees", &[("bytes", &fmt_bytes(r))]))
+                s.dim(&tf("size.allocated", &[("bytes", &fmt_bytes(b))]))
             );
         }
         println!("      {}", s.dim(&describe(&c.action, opts.trash)));

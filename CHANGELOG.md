@@ -41,8 +41,8 @@ All notable changes are documented here. The format follows
 - `disabled_detectors` turns off built-in detectors (for example `["docker"]`).
 - Shell completions (`roomy completions <shell>`) and manual pages (`roomy man`), for packaging.
 - What a removal really frees: for candidates that remove paths, roomy measures the bytes not
-  shared with APFS clones (`ATTR_CMNEXT_PRIVATESIZE`) and shows them next to the size when they
-  differ; totals and ordering use them (`reclaimable` in JSON).
+  shared with APFS clones (`ATTR_CMNEXT_PRIVATESIZE`). Sizes, totals and ordering lead with that
+  number; the allocated size is shown alongside when it is clearly larger (`reclaimable` in JSON).
 - Finder-style available space including purgeable space in `status`, the dashboard and JSON
   (`disk.available_incl_purgeable`); thresholds still use free space.
 

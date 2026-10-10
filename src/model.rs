@@ -70,13 +70,15 @@ impl Candidate {
         self.reclaimable.unwrap_or(self.bytes)
     }
 
-    /// The clone-aware size when it is clearly smaller than `bytes` (at least 10% and 10 MB),
-    /// i.e. when it is worth showing both numbers.
-    pub fn frees_less(&self) -> Option<u64> {
-        self.reclaimable.filter(|&r| {
-            let shared = self.bytes.saturating_sub(r);
-            shared >= 10_000_000 && shared >= self.bytes / 10
-        })
+    /// The allocated size when it is clearly larger than what removal frees (at least 10% and
+    /// 10 MB more), i.e. when it is worth showing next to `frees()`.
+    pub fn allocated_if_different(&self) -> Option<u64> {
+        self.reclaimable
+            .filter(|&r| {
+                let shared = self.bytes.saturating_sub(r);
+                shared >= 10_000_000 && shared >= self.bytes / 10
+            })
+            .map(|_| self.bytes)
     }
 }
 
