@@ -1,0 +1,58 @@
+[package]
+name = "roomy"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+description = "Keeps your Mac roomy: finds what is safe to delete, warns before storage or memory runs out."
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/masa-tichita/roomy"
+readme = "README.md"
+keywords = ["macos", "disk", "storage", "cleanup", "cli"]
+categories = ["command-line-utilities", "filesystem"]
+exclude = [".github/", "docs/research/"]
+
+[dependencies]
+anyhow = "1"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+clap = { version = "4.5", features = ["derive"] }
+libc = "0.2"
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSString", "NSURL", "NSFileManager", "NSError"] }
+ratatui = "0.30"
+rayon = "1.10"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+unicode-width = "0.2"
+
+[dev-dependencies]
+tempfile = "3"
+
+[profile.release]
+lto = "thin"
+strip = true
+
+[lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+unused_qualifications = "warn"
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+# pedantic lints that are noise for this code base
+cast_possible_truncation = "allow"
+cast_precision_loss = "allow"
+cast_sign_loss = "allow"
+cast_possible_wrap = "allow"
+module_name_repetitions = "allow"
+must_use_candidate = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+too_many_lines = "allow"
+struct_excessive_bools = "allow"
+similar_names = "allow"
+struct_field_names = "allow"   # e.g. Thresholds { disk_warn_gb, disk_critical_gb, … }
+# selected restriction lints
+undocumented_unsafe_blocks = "warn"
+unwrap_used = "warn"
+dbg_macro = "warn"
+todo = "warn"

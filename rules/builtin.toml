@@ -1,0 +1,283 @@
+# Built-in rules. Each one says where something lives and how it can be cleaned.
+#
+# safety  = "safe"   comes back by itself or is re-downloaded when needed
+#           "review" probably unneeded, but look first
+# action  = "delete" | "trash" | "command" | "none" (report only)
+# target  = "self" (the path) | "children" (what is inside; the folder stays)
+#
+# Prefer a tool's own cleanup command over deleting its files.
+# Built-in paths must stay inside the home folder (checked by tests).
+
+# ---------------------------------------------------------------- Xcode
+
+[[rules]]
+id = "xcode.derived-data"
+category = { en = "Xcode", ja = "Xcode" }
+title = { en = "Xcode DerivedData (build products)", ja = "Xcode の DerivedData（ビルド生成物）" }
+paths = ["~/Library/Developer/Xcode/DerivedData"]
+target = "children"
+safety = "safe"
+action = "delete"
+skip_if_running = ["/Xcode.app/Contents/MacOS/Xcode", "xcodebuild"]
+note = { en = "Rebuilt on the next build (which will be slower).", ja = "次回ビルドで再生成される（そのビルドは遅くなる）。" }
+
+[[rules]]
+id = "xcode.test-devices"
+category = { en = "Xcode", ja = "Xcode" }
+title = { en = "XCTestDevices (simulator clones for parallel testing)", ja = "XCTestDevices（並列テスト用シミュレータの複製）" }
+paths = ["~/Library/Developer/XCTestDevices"]
+target = "children"
+safety = "safe"
+action = "delete"
+skip_if_running = ["xcodebuild", "/Xcode.app/Contents/MacOS/Xcode"]
+note = { en = "Recreated on the next parallel test run. These are APFS clones, so less space may be freed than shown.", ja = "次回の並列テストで再作成される。APFS クローンのため、実際に空く量は表示より小さいことがある。" }
+
+[[rules]]
+id = "xcode.simulator-caches"
+category = { en = "Xcode", ja = "Xcode" }
+title = { en = "Simulator caches", ja = "シミュレータのキャッシュ" }
+paths = ["~/Library/Developer/CoreSimulator/Caches"]
+target = "children"
+safety = "safe"
+action = "delete"
+skip_if_running = ["/Simulator.app/Contents/MacOS/Simulator"]
+note = { en = "Recreated when needed.", ja = "必要に応じて再生成される。" }
+
+[[rules]]
+id = "xcode.archives"
+category = { en = "Xcode", ja = "Xcode" }
+title = { en = "Xcode archives", ja = "Xcode のアーカイブ" }
+paths = ["~/Library/Developer/Xcode/Archives"]
+safety = "review"
+action = "none"
+min_mb = 1000
+note = { en = "Contains dSYMs of shipped builds, needed to read crash reports.", ja = "リリース済みビルドの dSYM を含む（クラッシュレポートの解析に必要）。" }
+hint = { en = "Remove old ones in Xcode > Window > Organizer.", ja = "Xcode の Window > Organizer から古いものを削除する。" }
+
+# ---------------------------------------------------------------- package managers
+
+[[rules]]
+id = "cache.npm"
+category = { en = "Cache", ja = "キャッシュ" }
+title = { en = "npm cache", ja = "npm のキャッシュ" }
+paths = ["~/.npm/_cacache"]
+safety = "safe"
+action = "command"
+command = ["npm", "cache", "clean", "--force"]
+requires = ["npm"]
+note = { en = "Packages are downloaded again when needed.", ja = "必要になれば再ダウンロードされる。" }
+
+[[rules]]
+id = "cache.yarn"
+category = { en = "Cache", ja = "キャッシュ" }
+title = { en = "Yarn cache", ja = "Yarn のキャッシュ" }
+paths = ["~/Library/Caches/Yarn"]
+safety = "safe"
+action = "command"
+command = ["yarn", "cache", "clean"]
+requires = ["yarn"]
+note = { en = "Packages are downloaded again when needed.", ja = "必要になれば再ダウンロードされる。" }
+
+[[rules]]
+id = "cache.pnpm"
+category = { en = "Cache", ja = "キャッシュ" }
+title = { en = "pnpm store", ja = "pnpm のストア" }
+paths = ["~/Library/pnpm/store"]
+safety = "safe"
+action = "command"
+command = ["pnpm", "store", "prune"]
+requires = ["pnpm"]
+note = { en = "Only packages no project references are removed; the size shown is the whole store.", ja = "どのプロジェクトからも参照されていない分だけ消える（表示はストア全体の大きさ）。" }
+
+[[rules]]
+id = "cache.bun"
+category = { en = "Cache", ja = "キャッシュ" }
+title = { en = "Bun cache", ja = "Bun のキャッシュ" }
+paths = ["~/.bun/install/cache"]
+safety = "safe"
+action = "command"
+command = ["bun", "pm", "cache", "rm"]
+requires = ["bun"]
+note = { en = "Packages are downloaded again when needed.", ja = "必要になれば再ダウンロードされる。" }
+
+[[rules]]
+id = "cache.uv"
+category = { en = "Cache", ja = "キャッシュ" }
+title = { en = "uv cache", ja = "uv のキャッシュ" }
+paths = ["~/.cache/uv"]
+safety = "safe"
+action = "command"
+command = ["uv", "cache", "clean"]
+requires = ["uv"]
+note = { en = "Python packages are downloaded again when needed.", ja = "Python パッケージは必要になれば再ダウンロードされる。" }
+
+[[rules]]
+id = "cache.pip"
+category = { en = "Cache", ja = "キャッシュ" }
+title = { en = "pip cache", ja = "pip のキャッシュ" }
+paths = ["~/Library/Caches/pip"]
+safety = "safe"
+action = "delete"
+note = { en = "Packages are downloaded again when needed.", ja = "必要になれば再ダウンロードされる。" }
+
+[[rules]]
+id = "cache.homebrew"
+category = { en = "Cache", ja = "キャッシュ" }
+title = { en = "Homebrew downloads and old versions", ja = "Homebrew のダウンロードと旧バージョン" }
+paths = ["~/Library/Caches/Homebrew"]
+safety = "safe"
+action = "command"
+command = ["brew", "cleanup", "--prune=all"]
+requires = ["brew"]
+skip_if_running = ["brew.rb"]
+note = { en = "Also removes outdated installed versions.", ja = "インストール済みの古いバージョンも削除する。" }
+
+[[rules]]
+id = "cache.cocoapods"
+category = { en = "Cache", ja = "キャッシュ" }
+title = { en = "CocoaPods cache", ja = "CocoaPods のキャッシュ" }
+paths = ["~/Library/Caches/CocoaPods"]
+safety = "safe"
+action = "delete"
+note = { en = "Pods are downloaded again on the next pod install.", ja = "次回の pod install で再ダウンロードされる。" }
+
+[[rules]]
+id = "cache.swiftpm"
+category = { en = "Cache", ja = "キャッシュ" }
+title = { en = "Swift Package Manager cache", ja = "Swift Package Manager のキャッシュ" }
+paths = ["~/Library/Caches/org.swift.swiftpm"]
+safety = "safe"
+action = "delete"
+skip_if_running = ["/Xcode.app/Contents/MacOS/Xcode", "swift-build"]
+note = { en = "Packages are fetched again when needed.", ja = "必要になれば再取得される。" }
+
+[[rules]]
+id = "cache.go-build"
+category = { en = "Cache", ja = "キャッシュ" }
+title = { en = "Go build cache", ja = "Go のビルドキャッシュ" }
+paths = ["~/Library/Caches/go-build"]
+safety = "safe"
+action = "command"
+command = ["go", "clean", "-cache"]
+requires = ["go"]
+note = { en = "Rebuilt on the next build.", ja = "次回ビルドで再生成される。" }
+
+[[rules]]
+id = "cache.go-mod"
+category = { en = "Cache", ja = "キャッシュ" }
+title = { en = "Go module cache", ja = "Go のモジュールキャッシュ" }
+paths = ["~/go/pkg/mod"]
+safety = "review"
+action = "command"
+command = ["go", "clean", "-modcache"]
+requires = ["go"]
+note = { en = "Every module is downloaded again by the next build.", ja = "次回ビルドですべてのモジュールが再ダウンロードされる。" }
+
+[[rules]]
+id = "cache.gradle"
+category = { en = "Cache", ja = "キャッシュ" }
+title = { en = "Gradle caches", ja = "Gradle のキャッシュ" }
+paths = ["~/.gradle/caches"]
+safety = "safe"
+action = "delete"
+skip_if_running = ["GradleDaemon", "GradleWrapperMain"]
+note = { en = "Dependencies are downloaded again by the next build.", ja = "次回ビルドで依存関係が再ダウンロードされる。" }
+
+[[rules]]
+id = "cache.cargo-registry"
+category = { en = "Cache", ja = "キャッシュ" }
+title = { en = "Cargo registry (downloaded crates)", ja = "Cargo のレジストリ（ダウンロード済みクレート）" }
+paths = ["~/.cargo/registry"]
+safety = "review"
+action = "delete"
+skip_if_running = ["/cargo ", "rust-analyzer"]
+note = { en = "Crates are downloaded again by the next build; offline builds will fail until then.", ja = "次回ビルドでクレートが再ダウンロードされる。それまではオフラインでビルドできない。" }
+
+[[rules]]
+id = "cache.playwright"
+category = { en = "Cache", ja = "キャッシュ" }
+title = { en = "Playwright browsers", ja = "Playwright のブラウザ" }
+paths = ["~/Library/Caches/ms-playwright"]
+safety = "review"
+action = "delete"
+note = { en = "Projects using Playwright need `npx playwright install` again.", ja = "Playwright を使うプロジェクトで `npx playwright install` が再び必要になる。" }
+
+[[rules]]
+id = "cache.puppeteer"
+category = { en = "Cache", ja = "キャッシュ" }
+title = { en = "Puppeteer browsers", ja = "Puppeteer のブラウザ" }
+paths = ["~/.cache/puppeteer"]
+safety = "review"
+action = "delete"
+note = { en = "Downloaded again when Puppeteer is installed.", ja = "Puppeteer のインストール時に再ダウンロードされる。" }
+
+# ---------------------------------------------------------------- AI models
+
+[[rules]]
+id = "models.huggingface"
+category = { en = "AI models", ja = "AI モデル" }
+title = { en = "Hugging Face downloads", ja = "Hugging Face のダウンロード済みモデル" }
+paths = ["~/.cache/huggingface"]
+safety = "review"
+action = "none"
+min_mb = 1000
+note = { en = "Models are large and slow to download again.", ja = "モデルは大きく、再ダウンロードに時間がかかる。" }
+hint = { en = "Run `hf cache scan` / `hf cache delete` (or `huggingface-cli delete-cache`) to pick models.", ja = "`hf cache scan` / `hf cache delete`（または `huggingface-cli delete-cache`）で選んで削除する。" }
+
+[[rules]]
+id = "models.ollama"
+category = { en = "AI models", ja = "AI モデル" }
+title = { en = "Ollama models", ja = "Ollama のモデル" }
+paths = ["~/.ollama/models"]
+safety = "review"
+action = "none"
+min_mb = 1000
+note = { en = "Models are large and slow to download again.", ja = "モデルは大きく、再ダウンロードに時間がかかる。" }
+hint = { en = "`ollama list`, then `ollama rm <model>`.", ja = "`ollama list` で確認し `ollama rm <モデル>` で削除する。" }
+
+[[rules]]
+id = "models.lm-studio"
+category = { en = "AI models", ja = "AI モデル" }
+title = { en = "LM Studio models", ja = "LM Studio のモデル" }
+paths = ["~/.lmstudio/models", "~/.cache/lm-studio/models"]
+safety = "review"
+action = "none"
+min_mb = 1000
+note = { en = "Models are large and slow to download again.", ja = "モデルは大きく、再ダウンロードに時間がかかる。" }
+hint = { en = "Delete models from LM Studio's My Models tab.", ja = "LM Studio の My Models から削除する。" }
+
+# ---------------------------------------------------------------- apps
+
+[[rules]]
+id = "claude.desktop-vm"
+category = { en = "Apps", ja = "アプリ" }
+title = { en = "Claude desktop VM (Cowork)", ja = "Claude デスクトップの VM（Cowork）" }
+paths = ["~/Library/Application Support/Claude/vm_bundles"]
+safety = "safe"
+action = "delete"
+skip_if_running = ["/Claude.app/Contents/MacOS/Claude"]
+idle_marker = "claudevm.bundle/sessiondata.img"
+idle_days = 30
+note = { en = "Linux VM used by Cowork. Downloaded again the next time Cowork starts; its sandbox starts fresh.", ja = "Cowork が使う Linux VM。次に Cowork を使うと再ダウンロードされ、作業環境は初期状態に戻る。" }
+
+[[rules]]
+id = "ios.backups"
+category = { en = "Apps", ja = "アプリ" }
+title = { en = "iPhone / iPad backups", ja = "iPhone / iPad のバックアップ" }
+paths = ["~/Library/Application Support/MobileSync/Backup"]
+safety = "review"
+action = "none"
+min_mb = 1000
+note = { en = "Local device backups. They cannot be recreated.", ja = "端末のローカルバックアップ。作り直せない。" }
+hint = { en = "Manage them in Finder: select the device > Manage Backups.", ja = "Finder でデバイスを選び「バックアップを管理」から削除する。" }
+
+[[rules]]
+id = "app.logs"
+category = { en = "Other", ja = "その他" }
+title = { en = "App logs", ja = "アプリのログ" }
+paths = ["~/Library/Logs"]
+target = "children"
+safety = "review"
+action = "delete"
+min_mb = 500
+note = { en = "Only needed to investigate past problems.", ja = "過去の不具合を調べるときだけ必要。" }

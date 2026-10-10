@@ -1,0 +1,3 @@
+- [ ] `cargo fmt`, `cargo clippy --all-targets -- -D warnings` and `cargo test` pass
+- [ ] Changes that remove files have an end-to-end test (`tests/e2e.rs`)
+- [ ] New rules cite why they are safe / need review, and have English and Japanese text

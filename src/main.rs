@@ -1,0 +1,378 @@
+mod agent;
+mod app;
+mod clean;
+mod config;
+mod detect;
+mod doctor;
+mod guard;
+mod i18n;
+mod model;
+mod output;
+mod rules;
+mod scan;
+mod service;
+mod state;
+mod sys;
+mod tui;
+mod walk;
+
+use clap::{Parser, Subcommand};
+use std::process::ExitCode;
+
+#[derive(Parser)]
+#[command(
+    name = "roomy",
+    version,
+    about = "Keeps your Mac roomy: finds what is safe to delete, warns before storage or memory runs out."
+)]
+struct Cli {
+    /// Without a command: the dashboard in a terminal, `status` otherwise.
+    #[command(subcommand)]
+    cmd: Option<Cmd>,
+}
+
+#[derive(Subcommand)]
+enum Cmd {
+    /// Interactive dashboard
+    #[command(visible_alias = "tui", alias = "dashboard")]
+    Ui {
+        /// Print one frame as text (`WIDTHxHEIGHT`) instead of running interactively
+        #[arg(long, hide = true, value_name = "WxH")]
+        print: Option<String>,
+        /// With --print: show the folders tab
+        #[arg(long, hide = true)]
+        folders: bool,
+    },
+    /// Free space, memory pressure, swap, top memory users, last scan
+    Status {
+        #[arg(long)]
+        json: bool,
+        /// Exit with 3 when free space or memory is over a threshold
+        #[arg(long)]
+        exit_code: bool,
+    },
+    /// Walk the disk, find removal candidates and what grew since last time
+    #[command(alias = "inspect")]
+    Scan {
+        #[arg(long)]
+        json: bool,
+        /// Send a notification with the summary
+        #[arg(long)]
+        notify: bool,
+    },
+    /// Show the last scan without scanning again
+    Report {
+        #[arg(long)]
+        json: bool,
+        /// Also show ids, paths and why worktrees were left out
+        #[arg(short, long)]
+        verbose: bool,
+    },
+    /// Remove candidates by number or id (re-checked right before removal)
+    #[command(alias = "evict")]
+    Clean {
+        targets: Vec<String>,
+        /// Every candidate marked safe
+        #[arg(long)]
+        all_safe: bool,
+        /// Do not ask for confirmation
+        #[arg(short, long)]
+        yes: bool,
+        /// Show what would happen and stop
+        #[arg(short = 'n', long)]
+        dry_run: bool,
+        /// Move files to the Trash instead of deleting them
+        #[arg(long)]
+        trash: bool,
+    },
+    /// Largest folders from the last scan (no disk walk)
+    Top {
+        path: Option<String>,
+        #[arg(short, default_value_t = 20)]
+        n: usize,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Lowest free space per day
+    History {
+        #[arg(long, default_value_t = 14)]
+        days: usize,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Periodic check, run by launchd
+    #[command(hide = true)]
+    Agent,
+    /// Install or remove the background agent (not needed with `brew services`)
+    Service {
+        #[command(subcommand)]
+        action: ServiceCmd,
+    },
+    /// Diagnose permissions, tools, configuration and the agent
+    Doctor {
+        #[arg(long)]
+        json: bool,
+    },
+    /// Configuration file
+    Config {
+        #[command(subcommand)]
+        action: ConfigCmd,
+    },
+    /// List rules (built-in and your own)
+    Rules {
+        #[arg(long)]
+        json: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum ServiceCmd {
+    Install {
+        /// Install even from a development build or a Homebrew install
+        #[arg(long)]
+        force: bool,
+    },
+    Uninstall {
+        /// Also delete reports, snapshots and history
+        #[arg(long)]
+        purge: bool,
+    },
+    Status,
+}
+
+#[derive(Subcommand)]
+enum ConfigCmd {
+    /// Print the path of the configuration file
+    Path,
+    /// Print the effective configuration
+    Show,
+    /// Write a commented starter file (keeps an existing one)
+    Init,
+    /// Check the file for errors and unknown keys
+    Validate,
+}
+
+fn main() -> ExitCode {
+    let cli = Cli::parse();
+    let cmd = cli.cmd.unwrap_or_else(|| {
+        use std::io::IsTerminal;
+        if std::io::stdout().is_terminal() && std::io::stdin().is_terminal() {
+            Cmd::Ui {
+                print: None,
+                folders: false,
+            }
+        } else {
+            Cmd::Status {
+                json: false,
+                exit_code: false,
+            }
+        }
+    });
+    let loaded = config::load();
+    i18n::init(&loaded.config.language);
+    if let Some(e) = &loaded.error
+        && !matches!(
+            cmd,
+            Cmd::Config { .. } | Cmd::Doctor { .. } | Cmd::Ui { .. }
+        )
+    {
+        eprintln!(
+            "{}",
+            i18n::tf(
+                "config.broken",
+                &[("path", &config::path().display()), ("error", e)]
+            )
+        );
+    }
+    match run(cmd, &loaded.config) {
+        Ok(code) => ExitCode::from(code),
+        Err(e) => {
+            eprintln!("{}: {e:#}", app::NAME);
+            ExitCode::from(app::EXIT_ERROR)
+        }
+    }
+}
+
+fn run(cmd: Cmd, cfg: &config::Config) -> anyhow::Result<u8> {
+    use i18n::{t, tf};
+    match cmd {
+        Cmd::Ui {
+            print: Some(size),
+            folders,
+        } => {
+            let (w, h) = size
+                .split_once('x')
+                .and_then(|(w, h)| Some((w.parse().ok()?, h.parse().ok()?)))
+                .unwrap_or((120, 36));
+            let tab = if folders {
+                tui::Tab::Folders
+            } else {
+                tui::Tab::Overview
+            };
+            print!("{}", tui::render_text(cfg, w, h, tab));
+            Ok(0)
+        }
+        Cmd::Ui { print: None, .. } => {
+            tui::run(cfg)?;
+            Ok(0)
+        }
+        Cmd::Status { json, exit_code } => {
+            let alarming = output::status(cfg, json);
+            Ok(if exit_code && alarming {
+                app::EXIT_THRESHOLD
+            } else {
+                0
+            })
+        }
+        Cmd::Scan { json, notify } => {
+            let Some(_lock) = sys::try_lock(&state::lock_path()) else {
+                anyhow::bail!(t("scan.locked"))
+            };
+            if !json {
+                eprintln!("{}", t("scan.walking"));
+            }
+            let r = scan::run(cfg, false)?;
+            if json {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&output::report_json(&r))?
+                );
+            } else {
+                output::report(&r, false);
+            }
+            if notify && let Some(body) = agent::daily_summary(cfg, &r) {
+                sys::notify(&t("agent.daily_title"), &body);
+            }
+            Ok(0)
+        }
+        Cmd::Report { json, verbose } => {
+            let Some(r) = state::load::<model::Report>(&state::report_path()) else {
+                anyhow::bail!(t("clean.no_report"))
+            };
+            if json {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&output::report_json(&r))?
+                );
+            } else {
+                output::report(&r, verbose);
+            }
+            Ok(0)
+        }
+        Cmd::Clean {
+            targets,
+            all_safe,
+            yes,
+            dry_run,
+            trash,
+        } => {
+            let Some(_lock) = sys::try_lock(&state::lock_path()) else {
+                anyhow::bail!(t("scan.locked"))
+            };
+            let code = clean::run(
+                cfg,
+                &clean::Opts {
+                    targets,
+                    all_safe,
+                    yes,
+                    dry_run,
+                    trash,
+                },
+            )?;
+            Ok(code as u8)
+        }
+        Cmd::Top { path, n, json } => {
+            let files = state::snapshot_files();
+            let Some(snap) = files.first().and_then(|p| state::load::<walk::Snapshot>(p)) else {
+                anyhow::bail!(t("clean.no_report"))
+            };
+            let prev = files
+                .iter()
+                .skip(1)
+                .filter_map(|p| state::load::<walk::Snapshot>(p))
+                .find(|s| s.comparable(&snap));
+            let dir = match path {
+                Some(p) => {
+                    let p = sys::expand(&p);
+                    std::fs::canonicalize(&p).unwrap_or(p)
+                }
+                None => sys::home(),
+            };
+            output::top(&snap, prev.as_ref(), &dir, n, json);
+            Ok(0)
+        }
+        Cmd::History { days, json } => {
+            output::history(&state::read_lines(&state::history_path()), days, json);
+            Ok(0)
+        }
+        Cmd::Agent => {
+            agent::run(cfg)?;
+            Ok(0)
+        }
+        Cmd::Service { action } => {
+            match action {
+                ServiceCmd::Install { force } => service::install(cfg, force)?,
+                ServiceCmd::Uninstall { purge } => {
+                    service::uninstall()?;
+                    if purge {
+                        let dir = app::state_dir();
+                        if dir.exists() {
+                            std::fs::remove_dir_all(&dir)?;
+                        }
+                        println!("{}", tf("service.purged", &[("path", &dir.display())]));
+                    }
+                }
+                ServiceCmd::Status => println!("{}", service::status_line()),
+            }
+            Ok(0)
+        }
+        Cmd::Doctor { json } => Ok(if doctor::run(json) > 0 {
+            app::EXIT_ERROR
+        } else {
+            0
+        }),
+        Cmd::Config { action } => {
+            let path = config::path();
+            match action {
+                ConfigCmd::Path => println!("{}", path.display()),
+                ConfigCmd::Show => print!("{}", toml::to_string_pretty(cfg)?),
+                ConfigCmd::Init => {
+                    if path.exists() {
+                        println!("{}", tf("config.exists", &[("path", &path.display())]));
+                    } else {
+                        std::fs::create_dir_all(app::config_dir())?;
+                        std::fs::write(&path, config::template())?;
+                        println!("{}", tf("config.created", &[("path", &path.display())]));
+                    }
+                }
+                ConfigCmd::Validate => {
+                    let loaded = config::load();
+                    if let Some(e) = &loaded.error {
+                        println!(
+                            "{}",
+                            tf("config.broken", &[("path", &path.display()), ("error", e)])
+                        );
+                        return Ok(1);
+                    }
+                    let mut bad = false;
+                    for k in &loaded.unknown_keys {
+                        println!("{}", tf("config.unknown_key", &[("key", k)]));
+                    }
+                    for e in rules::validate(&rules::all(&loaded.config)) {
+                        bad = true;
+                        println!("{e}");
+                    }
+                    if !bad && loaded.unknown_keys.is_empty() {
+                        println!("{}", t("config.valid"));
+                    }
+                    return Ok(u8::from(bad));
+                }
+            }
+            Ok(0)
+        }
+        Cmd::Rules { json } => {
+            output::rules(cfg, json);
+            Ok(0)
+        }
+    }
+}

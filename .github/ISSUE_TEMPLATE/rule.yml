@@ -1,0 +1,18 @@
+name: Rule request
+description: Suggest a place roomy should know how to clean
+labels: [rule]
+body:
+  - type: input
+    attributes:
+      label: Path(s)
+      placeholder: ~/Library/Caches/com.example.app
+    validations: { required: true }
+  - type: textarea
+    attributes:
+      label: What creates it, and does it come back by itself?
+      description: Link documentation if you can. Is there a cleanup command?
+    validations: { required: true }
+  - type: dropdown
+    attributes:
+      label: Suggested safety
+      options: [safe, review, report only]
