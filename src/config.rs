@@ -347,7 +347,7 @@ mod tests {
     fn empty_file_gives_defaults() {
         let (c, unknown) = parse("").unwrap();
         assert_eq!(c.thresholds.disk_warn_gb, 50.0);
-        assert!(unknown.is_empty());
+        assert_eq!(unknown, Vec::<String>::new());
     }
 
     #[test]
@@ -374,7 +374,7 @@ mod tests {
     #[test]
     fn template_parses() {
         let (c, unknown) = parse(&template()).unwrap();
-        assert!(unknown.is_empty());
+        assert_eq!(unknown, Vec::<String>::new());
         assert_eq!(c.config_version, CONFIG_VERSION);
     }
 

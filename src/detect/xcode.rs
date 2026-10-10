@@ -171,6 +171,6 @@ mod tests {
             {"udid":"A","isAvailable":false,"dataPath":"/s/Devices/A/data"},
             {"udid":"B","isAvailable":true,"dataPath":"/s/Devices/B/data"}]}}"#;
         assert_eq!(parse_unavailable(json), vec![PathBuf::from("/s/Devices/A")]);
-        assert!(parse_unavailable("not json").is_empty());
+        assert_eq!(parse_unavailable("not json"), Vec::<PathBuf>::new());
     }
 }
