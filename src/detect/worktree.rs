@@ -191,7 +191,7 @@ pub fn evaluate(ctx: &Ctx, w: &Path) -> Result<Candidate, Msg> {
     if !is_linked_worktree(w) {
         return Err(m("recheck.gone"));
     }
-    if ctx.cwds.iter().any(|c| c.starts_with(w)) {
+    if ctx.cwds().iter().any(|c| c.starts_with(w)) {
         return Err(m("wt.in_use"));
     }
     let status = git(
@@ -443,7 +443,7 @@ mod tests {
             cfg,
             sizer,
             cmdlines: vec![],
-            cwds,
+            cwds: cwds.into(),
             off_limits: vec![],
         }
     }

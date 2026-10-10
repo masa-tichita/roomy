@@ -95,6 +95,7 @@ macOS ties that permission to the exact build, so you need to add it again after
 ```toml
 language = "ja"              # auto | en | ja
 disabled_rules = ["cache.cargo-registry"]   # top-level keys go before any [table]
+disabled_detectors = ["docker"]              # cache xcode versioned editor worktree docker apps downloads
 
 [thresholds]
 disk_warn_gb = 50
@@ -119,7 +120,8 @@ safety = "review"
 action = "trash"
 ```
 
-`roomy rules` lists every rule; `roomy config validate` catches typos.
+Unused apps are looked for only in folders the scan walks (`[scan] roots`, by default `~` and
+`/Applications`). `roomy rules` lists every rule; `roomy config validate` catches typos.
 
 ## Use it from AI agents
 

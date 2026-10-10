@@ -108,6 +108,11 @@ note = "ビルド中間生成物。次回ビルドで再生成"   # 組み込み
 | apps | 一定サイズ以上で最終使用（Spotlight の `kMDItemLastUsedDate`）が古いアプリ。削除はせずアンインストーラ案内のみ |
 | downloads | 古いファイル。review・ゴミ箱のみ（Downloads は TCC 保護。§7） |
 
+検出器は設定 `disabled_detectors`（例: `["docker", "apps"]`）で個別に無効化できる。
+無効化された検出器の候補は `clean` の再検証で拒否する。
+apps は走査したフォルダ（`scan.roots` 配下で `scan.exclude` 外）だけを見る。サイズは
+スナップショットから取り、記録されていない（`snapshot_min_mb` 未満の）ものは測り直さない。
+
 ### 4.5 worktree 検出
 
 - 探索ルート: 設定 `worktree_roots`（既定は `~/dev ~/src ~/code ~/projects ~/Developer ~/work ~/repos` のうち存在するもの、
@@ -118,7 +123,7 @@ note = "ビルド中間生成物。次回ビルドで再生成"   # 組み込み
   - push 済みか（upstream との差、upstream 無しなら HEAD がどこかのリモートブランチに含まれるか）
   - 既定ブランチへの取り込み有無（squash merge は検出できない旨を注記）
   - 最終操作（HEAD の reflog 時刻とコミット時刻の新しい方）
-  - 使用中か（自分のプロセスの cwd がその中にあるか。`lsof -d cwd`）
+  - 使用中か（自分のプロセスの cwd がその中にあるか。`lsof -d cwd`。worktree が見つかったときだけ実行）
   - **Git 管理外の固有ファイル**: `--ignored` の結果から再生成可能なもの（`node_modules`、`.venv`、
     `target`、`.next` 等）を除いたもの。`.env` やベンチ結果のような「消えたら戻らない」ものを列挙する
 - 分類: 未コミット・未 push・使用中・最近使用 → 対象外（理由を `report --verbose` で表示）。

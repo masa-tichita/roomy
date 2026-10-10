@@ -13,6 +13,7 @@ mod xcode;
 use crate::config::Config;
 use crate::model::{Candidate, Excluded};
 use crate::walk::Sizer;
+use std::cell::OnceCell;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
@@ -20,7 +21,9 @@ pub struct Ctx<'a> {
     pub cfg: &'a Config,
     pub sizer: &'a Sizer,
     pub cmdlines: Vec<String>,
-    pub cwds: Vec<PathBuf>,
+    /// Working directories of the user's processes. Listing them (`lsof`) is slow, so it happens
+    /// only when a worktree needs the answer; read them with [`Ctx::cwds`].
+    pub cwds: OnceCell<Vec<PathBuf>>,
     /// Folders that must not be touched in this run (TCC-protected ones in background runs
     /// without Full Disk Access).
     pub off_limits: Vec<PathBuf>,
@@ -35,24 +38,55 @@ impl Ctx<'_> {
         self.cmdlines.iter().any(|c| c.contains(needle))
     }
 
+    pub fn cwds(&self) -> &[PathBuf] {
+        self.cwds.get_or_init(crate::sys::process_cwds)
+    }
+
     pub fn min_bytes(&self) -> u64 {
         self.cfg.candidates.min_mb * 1_000_000
     }
+
+    pub fn detector_on(&self, name: &str) -> bool {
+        !self.cfg.disabled_detectors.iter().any(|d| d == name)
+    }
 }
+
+/// Names for `disabled_detectors`; each is also the first part of its candidates' `source`.
+pub const DETECTORS: &[&str] = &[
+    "cache",
+    "xcode",
+    "versioned",
+    "editor",
+    "worktree",
+    "docker",
+    "apps",
+    "downloads",
+];
+
+type Detect = fn(&Ctx, &mut Vec<Candidate>);
 
 pub fn detect_all(ctx: &Ctx) -> (Vec<Candidate>, Vec<Excluded>) {
     let mut found = vec![];
     let mut excluded = vec![];
     crate::rules::detect(ctx, &mut found);
     let from_rules = found.len();
-    caches::detect(ctx, &mut found);
-    xcode::detect(ctx, &mut found);
-    versioned::detect(ctx, &mut found);
-    editor::detect(ctx, &mut found);
-    worktree::detect(ctx, &mut found, &mut excluded);
-    docker::detect(ctx, &mut found);
-    apps::detect(ctx, &mut found);
-    downloads::detect(ctx, &mut found);
+    let detectors: [(&str, Detect); 7] = [
+        ("cache", caches::detect),
+        ("xcode", xcode::detect),
+        ("versioned", versioned::detect),
+        ("editor", editor::detect),
+        ("docker", docker::detect),
+        ("apps", apps::detect),
+        ("downloads", downloads::detect),
+    ];
+    for (name, detect) in detectors {
+        if ctx.detector_on(name) {
+            detect(ctx, &mut found);
+        }
+    }
+    if ctx.detector_on("worktree") {
+        worktree::detect(ctx, &mut found, &mut excluded);
+    }
 
     // Rules carry their own minimum; the global one applies to everything else.
     let min = ctx.min_bytes();
@@ -70,7 +104,9 @@ pub fn detect_all(ctx: &Ctx) -> (Vec<Candidate>, Vec<Excluded>) {
 /// Re-evaluates one candidate now. Returns the fresh candidate (its action is what will run),
 /// or why it no longer qualifies.
 pub fn recheck(ctx: &Ctx, c: &Candidate) -> Result<Candidate, String> {
-    let fresh = match c.source.split(':').next().unwrap_or("") {
+    let source = c.source.split(':').next().unwrap_or("");
+    let fresh = match source {
+        _ if !ctx.detector_on(source) => Err(crate::i18n::m("recheck.detector_disabled")),
         "rule" => crate::rules::recheck(ctx, c),
         "cache" => caches::recheck(ctx, c),
         "xcode" => xcode::recheck(ctx, c),

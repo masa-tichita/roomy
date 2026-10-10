@@ -102,6 +102,7 @@
 "recheck.gone" = "no longer applies"
 "recheck.rule_gone" = "its rule no longer exists"
 "recheck.rule_disabled" = "its rule is disabled"
+"recheck.detector_disabled" = "its detector is disabled"
 "recheck.unknown_source" = "unknown detector; run `roomy scan` again"
 "recheck.became_review" = "situation changed, needs a look first ({why})"
 

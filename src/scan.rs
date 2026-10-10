@@ -56,7 +56,7 @@ pub fn run(cfg: &Config, background: bool) -> anyhow::Result<Report> {
         cfg,
         sizer: &sizer,
         cmdlines: sys::cmdlines(),
-        cwds: sys::process_cwds(),
+        cwds: std::cell::OnceCell::new(),
         off_limits,
     };
     let (candidates, excluded) = detect::detect_all(&ctx);

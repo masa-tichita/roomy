@@ -27,6 +27,8 @@ pub struct Config {
     pub service: Service,
     /// Rule ids to turn off.
     pub disabled_rules: Vec<String>,
+    /// Built-in detectors to turn off, e.g. `["docker", "apps"]` (see `detect::DETECTORS`).
+    pub disabled_detectors: Vec<String>,
     /// Per-rule changes, e.g. `[rule_overrides."claude.desktop-vm"] safety = "safe"`.
     pub rule_overrides: BTreeMap<String, RuleOverride>,
     /// Your own rules (same format as the built-in ones).
@@ -157,6 +159,7 @@ impl Default for Config {
             }],
             service: Service::default(),
             disabled_rules: vec![],
+            disabled_detectors: vec![],
             rule_overrides: BTreeMap::new(),
             rules: vec![],
         }
@@ -302,6 +305,11 @@ pub fn parse(text: &str) -> Result<(Config, Vec<String>), String> {
     let known = toml::Value::try_from(Config::default()).map_err(|e| e.to_string())?;
     let mut unknown = vec![];
     unknown_keys(&given, &known, "", &mut unknown);
+    for d in &config.disabled_detectors {
+        if !crate::detect::DETECTORS.contains(&d.as_str()) {
+            unknown.push(format!("disabled_detectors.{d}"));
+        }
+    }
     Ok((config, unknown))
 }
 
@@ -388,6 +396,13 @@ mod tests {
         let (c, unknown) = parse(text).unwrap();
         assert!(unknown.is_empty(), "{unknown:?}");
         assert_eq!(c.service.quiet_hours, Some([23, 7]));
+    }
+
+    #[test]
+    fn unknown_detector_names_are_reported() {
+        let (c, unknown) = parse("disabled_detectors = [\"docker\", \"dokcer\"]\n").unwrap();
+        assert_eq!(c.disabled_detectors, vec!["docker", "dokcer"]);
+        assert_eq!(unknown, vec!["disabled_detectors.dokcer"]);
     }
 
     #[test]

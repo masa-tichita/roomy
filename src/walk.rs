@@ -22,6 +22,12 @@ pub struct Snapshot {
     pub exclude: Vec<String>,
     /// path -> bytes, only folders of at least `snapshot_min_mb` within `snapshot_max_depth`
     pub entries: BTreeMap<String, u64>,
+    /// Smallest size recorded (`snapshot_min_mb`). 0 in snapshots from older versions.
+    #[serde(default)]
+    pub min: u64,
+    /// Deepest level below a root that was recorded. 0 in snapshots from older versions.
+    #[serde(default)]
+    pub max_depth: usize,
 }
 
 impl Snapshot {
@@ -147,6 +153,8 @@ pub fn snapshot(
             .map(|r| r.to_string_lossy().into_owned())
             .collect(),
         entries,
+        min,
+        max_depth,
     };
     (
         snap,
@@ -187,6 +195,28 @@ impl Sizer {
             Some(&b) => b,
             None => measure(p),
         }
+    }
+
+    /// Whether the walk went through `p` deep enough to record it: under a root, not excluded,
+    /// within `max_depth`. Such a folder missing from the snapshot is smaller than `snap.min`.
+    pub fn covers(&self, p: &Path) -> bool {
+        let s = &self.snap;
+        !s.exclude.iter().any(|e| p.starts_with(e))
+            && s.roots.iter().any(|r| {
+                p.strip_prefix(r)
+                    .is_ok_and(|rest| rest.components().count() <= s.max_depth)
+            })
+    }
+
+    /// Size of `p` if it is at least `min`. Folders the walk already found to be smaller are not
+    /// walked again.
+    pub fn size_at_least(&self, p: &Path, min: u64) -> Option<u64> {
+        let b = match self.snap.entries.get(&*p.to_string_lossy()) {
+            Some(&b) => b,
+            None if self.snap.min <= min && self.covers(p) => return None,
+            None => measure(p),
+        };
+        (b >= min).then_some(b)
     }
 }
 
@@ -280,7 +310,45 @@ mod tests {
             roots: vec!["/r".into()],
             exclude: vec![],
             entries: entries.iter().map(|(p, b)| (p.to_string(), *b)).collect(),
+            min: 0,
+            max_depth: 0,
         }
+    }
+
+    #[test]
+    fn folders_the_walk_found_small_are_not_walked_again() {
+        let d = tempfile::tempdir().unwrap();
+        let root = d.path().canonicalize().unwrap();
+        for sub in ["big", "small", "skip", "a/b/deep"] {
+            fs::create_dir_all(root.join(sub)).unwrap();
+        }
+        fs::write(root.join("big/f"), vec![1u8; 2 << 20]).unwrap();
+        fs::write(root.join("small/f"), vec![1u8; 10]).unwrap();
+        let (snap, _) = snapshot(
+            std::slice::from_ref(&root),
+            &[root.join("skip")],
+            1 << 20,
+            2,
+        );
+        let sizer = Sizer { snap };
+        assert!(sizer.covers(&root.join("small")));
+        assert!(sizer.covers(&root.join("a/b")));
+        assert!(
+            !sizer.covers(&root.join("a/b/deep")),
+            "deeper than max_depth"
+        );
+        assert!(!sizer.covers(&root.join("skip/x")), "excluded");
+        assert!(
+            !sizer.covers(Path::new("/Applications")),
+            "outside the roots"
+        );
+        assert!(sizer.size_at_least(&root.join("big"), 1 << 20).is_some());
+        assert_eq!(sizer.size_at_least(&root.join("small"), 1 << 20), None);
+        // Not recorded but not known to be small either: measured.
+        fs::write(root.join("skip/f"), vec![1u8; 2 << 20]).unwrap();
+        assert!(sizer.size_at_least(&root.join("skip"), 1 << 20).is_some());
+        // A threshold below what the snapshot records needs a measurement too.
+        assert!(sizer.size_at_least(&root.join("small"), 1).is_some());
     }
 
     #[test]

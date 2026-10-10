@@ -101,6 +101,7 @@
 "recheck.gone" = "もう該当しません"
 "recheck.rule_gone" = "対応するルールがなくなりました"
 "recheck.rule_disabled" = "対応するルールが無効になっています"
+"recheck.detector_disabled" = "対応する検出器が無効になっています"
 "recheck.unknown_source" = "不明な検出器です。`roomy scan` をやり直してください"
 "recheck.became_review" = "状況が変わったため確認が必要です（{why}）"
 

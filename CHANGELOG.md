@@ -22,8 +22,12 @@ All notable changes are documented here. The format follows
   guard rails for unattended removal (`--allow-review`, `[clean] max_unattended_gb`),
   `roomy guide` (agent instructions, Claude Code skill, AGENTS.md snippet) and an MCP server
   (`roomy mcp`).
+- `disabled_detectors` turns off built-in detectors (for example `["docker"]`).
 
 ### Fixed
 
 - `doctor`, `status` and `rules` size their label column to the widest label, so long Japanese
   labels (フルディスクアクセス, 最終スキャン) no longer push their line out of alignment.
+- Scans no longer measure app folders the scan did not walk (outside `[scan] roots` or in
+  `exclude`), nor app folders the walk already found small; `lsof` runs only when a worktree is
+  found.

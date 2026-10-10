@@ -21,19 +21,23 @@ impl Sandbox {
         Sandbox { _dir: dir, home }
     }
 
-    fn roomy(&self, args: &[&str]) -> Output {
-        Command::new(env!("CARGO_BIN_EXE_roomy"))
-            .args(args)
+    /// The binary with an English environment that points only into the sandbox.
+    fn command(&self, args: &[&str]) -> Command {
+        let mut cmd = Command::new(env!("CARGO_BIN_EXE_roomy"));
+        cmd.args(args)
             .env("HOME", &self.home)
             .env("LANG", "en_US.UTF-8")
-            .env_remove("LC_ALL")
+            .env_remove("LC_ALL") // set on CI runners, and it outranks LANG
             .env_remove("LC_MESSAGES")
             .env_remove("XDG_CONFIG_HOME")
             .env_remove("ROOMY_CONFIG_DIR")
             .env_remove("ROOMY_STATE_DIR")
-            .env("NO_COLOR", "1")
-            .output()
-            .unwrap()
+            .env("NO_COLOR", "1");
+        cmd
+    }
+
+    fn roomy(&self, args: &[&str]) -> Output {
+        self.command(args).output().unwrap()
     }
 
     fn file(&self, rel: &str, bytes: usize) -> PathBuf {
@@ -63,7 +67,10 @@ fn ids(r: &serde_json::Value) -> Vec<String> {
         .collect()
 }
 
+/// Scans stay inside the sandbox: only `~` is walked (so the apps detector leaves /Applications
+/// alone), and Docker, which would answer from the machine running the tests, is off.
 const BASE: &str = r#"
+disabled_detectors = ["docker"]
 [scan]
 roots = ["~"]
 [candidates]
@@ -197,6 +204,38 @@ fn disabled_and_overridden_rules() {
 }
 
 #[test]
+fn disabled_detectors_find_nothing_and_clean_nothing() {
+    let sb = Sandbox::new(BASE);
+    let blob = sb.file("Library/Caches/BigApp/blob", 100_000);
+    assert!(sb.roomy(&["scan"]).status.success());
+    assert!(ids(&report(&sb)).contains(&"cache.app:BigApp".to_string()));
+
+    // Turned off after the scan: the stale candidate is refused at re-check time.
+    fs::write(
+        sb.home.join(".config/roomy/config.toml"),
+        BASE.replace("[\"docker\"]", "[\"docker\", \"cache\", \"dokcer\"]"),
+    )
+    .unwrap();
+    let o = sb.roomy(&["clean", "cache.app:BigApp", "--yes"]);
+    assert!(!o.status.success());
+    assert!(
+        stdout(&o).contains("detector is disabled"),
+        "{}",
+        stdout(&o)
+    );
+    assert!(blob.exists());
+    let o = sb.roomy(&["config", "validate"]);
+    assert!(
+        stdout(&o).contains("disabled_detectors.dokcer"),
+        "{}",
+        stdout(&o)
+    );
+
+    assert!(sb.roomy(&["scan"]).status.success());
+    assert!(!ids(&report(&sb)).contains(&"cache.app:BigApp".to_string()));
+}
+
+#[test]
 fn broken_config_falls_back_to_defaults_and_validate_reports_it() {
     let sb = Sandbox::new("[thresholds]\ndisk_warn_gb = \"lots\"\n");
     let o = sb.roomy(&["config", "validate"]);
@@ -247,13 +286,9 @@ fn japanese_and_english_render_the_same_report() {
     sb.file("Library/Caches/TestApp/a", 100_000);
     assert!(sb.roomy(&["scan"]).status.success());
     let en = stdout(&sb.roomy(&["report"]));
-    let ja = Command::new(env!("CARGO_BIN_EXE_roomy"))
-        .args(["report"])
-        .env("HOME", &sb.home)
+    let ja = sb
+        .command(&["report"])
         .env("LANG", "ja_JP.UTF-8")
-        .env_remove("LC_ALL") // set on CI runners, and it outranks LANG
-        .env_remove("LC_MESSAGES")
-        .env("NO_COLOR", "1")
         .output()
         .unwrap();
     let ja = stdout(&ja);
@@ -269,8 +304,7 @@ fn japanese_and_english_render_the_same_report() {
 
 #[test]
 fn top_reads_the_snapshot() {
-    let sb =
-        Sandbox::new("[scan]\nroots = [\"~\"]\nsnapshot_min_mb = 0\n[worktrees]\nroots = []\n");
+    let sb = Sandbox::new(&BASE.replace("[scan]\n", "[scan]\nsnapshot_min_mb = 0\n"));
     sb.file("big/blob", 300_000);
     assert!(sb.roomy(&["scan"]).status.success());
     let o = sb.roomy(&["top", "--json"]);
@@ -458,9 +492,8 @@ fn json_errors_are_json() {
 
 fn mcp(sb: &Sandbox, args: &[&str], lines: &[&str]) -> Vec<serde_json::Value> {
     use std::io::Write;
-    let mut child = Command::new(env!("CARGO_BIN_EXE_roomy"))
-        .args(args)
-        .env("HOME", &sb.home)
+    let mut child = sb
+        .command(args)
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())

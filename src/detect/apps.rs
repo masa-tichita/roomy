@@ -9,8 +9,13 @@ use crate::sys::{days_since, expand, run, tilde};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
+/// Only folders the scan walked: sizing apps outside `scan.roots` (or in `scan.exclude`) would
+/// walk every bundle again on each scan, tens of GB with a few Xcode versions installed.
 pub fn detect(ctx: &Ctx, out: &mut Vec<Candidate>) {
     for base in [PathBuf::from("/Applications"), expand("~/Applications")] {
+        if !ctx.sizer.covers(&base) {
+            continue;
+        }
         for p in children(&base) {
             if let Some(c) = evaluate(ctx, &p) {
                 out.push(c);
@@ -65,10 +70,9 @@ fn evaluate(ctx: &Ctx, p: &Path) -> Option<Candidate> {
     if !p.is_dir() || p.is_symlink() {
         return None;
     }
-    let bytes = ctx.sizer.size(p);
-    if bytes < crate::config::gb(ctx.cfg.apps.min_gb) {
-        return None;
-    }
+    let bytes = ctx
+        .sizer
+        .size_at_least(p, crate::config::gb(ctx.cfg.apps.min_gb))?;
     let app = bundle(p)?;
     if ctx.running(&format!("{}/Contents/MacOS/", app.to_string_lossy())) {
         return None;

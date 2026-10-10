@@ -190,7 +190,7 @@ pub fn prepare(cfg: &Config, report: &Report, picked: &[usize], policy: Policy) 
         cfg,
         sizer: &sizer,
         cmdlines: sys::cmdlines(),
-        cwds: sys::process_cwds(),
+        cwds: std::cell::OnceCell::new(),
         off_limits: vec![],
     };
     let mut plan = Plan {
