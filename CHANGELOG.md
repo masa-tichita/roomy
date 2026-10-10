@@ -13,6 +13,9 @@ All notable changes are documented here. The format follows
 - Worktrees in folders another tool manages can be removed through that tool
   (`[[worktrees.managed]] remove = ["orca", "worktree", "rm", "--worktree", "path:{path}"]`).
 - Worktree evidence shows a merged pull request (via `gh`), which catches squash merges.
+- Release workflow: universal binary (arm64 + x86_64), ad-hoc signed, with build provenance,
+  published to GitHub Releases and to the Homebrew tap (`brew install masa-tichita/tap/roomy`,
+  `brew services start roomy`).
 
 ### Changed
 

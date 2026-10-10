@@ -64,15 +64,20 @@ explain it to you, and remove only what you approve — through the same safety 
 
 ## Install
 
-From source (Rust 1.88 or newer):
+```sh
+brew install masa-tichita/tap/roomy
+brew services start roomy          # background checks and a daily scan
+```
+
+Universal binary for Apple Silicon and Intel, macOS 13 or newer. Or build it yourself with
+Rust 1.88 or newer:
 
 ```sh
 cargo install --git https://github.com/masa-tichita/roomy
+roomy service install              # the same background checks without Homebrew
 ```
 
-Homebrew and prebuilt universal binaries are planned for v0.2.
-
-Shell completions and manual pages (the Homebrew formula will install them for you):
+Homebrew installs shell completions and manual pages. With `cargo install`:
 
 ```sh
 roomy completions zsh > ~/.zfunc/_roomy     # also bash, fish, elvish, powershell
@@ -87,7 +92,7 @@ roomy status               # free space, memory, swap, top apps
 roomy scan                 # walk the disk, list candidates and growth
 roomy clean 1 3 --dry-run  # see exactly what would happen
 roomy clean 1 3            # do it (asks first)
-roomy service install      # background checks and a daily scan
+brew services start roomy  # background checks and a daily scan (or: roomy service install)
 roomy doctor               # permissions, tools, agent, config
 ```
 
@@ -199,9 +204,9 @@ within a schema version; anything else bumps it.
 ## Uninstall
 
 ```sh
-roomy service uninstall --purge   # stop the agent, delete reports and history
-cargo uninstall roomy
-rm -r ~/.config/roomy             # optional: your configuration
+brew services stop roomy && brew uninstall roomy   # or: roomy service uninstall && cargo uninstall roomy
+rm -r ~/Library/Application\ Support/roomy        # reports, snapshots, history, audit log
+rm -r ~/.config/roomy                              # optional: your configuration
 ```
 
 ## License

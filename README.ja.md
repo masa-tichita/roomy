@@ -46,15 +46,19 @@ AI モデル — を理解しています。
 
 ## インストール
 
-ソースから（Rust 1.88 以降）:
+```sh
+brew install masa-tichita/tap/roomy
+brew services start roomy          # 常駐チェックと日次スキャン
+```
+
+Apple Silicon と Intel の両方で動く Universal バイナリです（macOS 13 以降）。Rust 1.88 以降で自分でビルドする場合:
 
 ```sh
 cargo install --git https://github.com/masa-tichita/roomy
+roomy service install              # Homebrew を使わない場合の常駐チェック
 ```
 
-Homebrew と Universal バイナリの配布は v0.2 で予定しています。
-
-シェル補完と man ページ（Homebrew の formula では自動で入ります）:
+シェル補完と man ページは Homebrew なら自動で入ります。`cargo install` の場合:
 
 ```sh
 roomy completions zsh > ~/.zfunc/_roomy     # bash, fish, elvish, powershell も可
@@ -69,7 +73,7 @@ roomy status               # 空き容量・メモリ・スワップ・メモリ
 roomy scan                 # ディスクを走査し、候補と増えた場所を表示
 roomy clean 1 3 --dry-run  # 何が起きるかを事前に確認
 roomy clean 1 3            # 実行（確認あり）
-roomy service install      # 常駐チェックと日次スキャン
+brew services start roomy  # 常駐チェックと日次スキャン（または roomy service install）
 roomy doctor               # 権限・ツール・エージェント・設定の診断
 ```
 
@@ -141,9 +145,9 @@ roomy guide                            # エージェントが従う手順
 ## アンインストール
 
 ```sh
-roomy service uninstall --purge   # エージェントを止め、レポートと履歴を削除
-cargo uninstall roomy
-rm -r ~/.config/roomy             # 任意: 設定
+brew services stop roomy && brew uninstall roomy   # または roomy service uninstall && cargo uninstall roomy
+rm -r ~/Library/Application\ Support/roomy        # レポート・スナップショット・履歴・監査ログ
+rm -r ~/.config/roomy                              # 任意: 設定
 ```
 
 ## ライセンス
