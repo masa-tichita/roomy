@@ -1,5 +1,9 @@
 name: Release
 
+# draft -> build -> publish -> homebrew. Nothing is public until every asset is attached, and a
+# missing CHANGELOG section or version mismatch stops the release before anything is built.
+# Re-running a failed run reuses the draft; a published release is never touched.
+
 on:
   push:
     tags: ["v*"]
@@ -12,23 +16,19 @@ env:
   MACOSX_DEPLOYMENT_TARGET: "13.0"
 
 jobs:
-  build:
-    name: universal binary and GitHub release
-    runs-on: macos-latest
+  draft:
+    name: check the tag and draft the release
+    runs-on: ubuntu-latest
     permissions:
-      contents: write # create the release
-      id-token: write # sign the provenance attestation
-      attestations: write
-    outputs:
-      version: ${{ steps.meta.outputs.version }}
-      sha256: ${{ steps.pack.outputs.sha256 }}
+      contents: write # create the draft release
+    env:
+      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      - id: meta
-        name: Check the tag matches Cargo.toml
+      - name: Check the tag matches Cargo.toml
         run: |
           version="${GITHUB_REF_NAME#v}"
           crate=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
@@ -36,7 +36,47 @@ jobs:
             echo "::error::tag $GITHUB_REF_NAME does not match Cargo.toml version $crate"
             exit 1
           fi
-          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Release notes from CHANGELOG.md
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          awk -v v="$version" '
+            $0 ~ "^## \\[" v "\\]" { on = 1; next }
+            on && /^## \[/ { exit }
+            on { print }
+          ' CHANGELOG.md > notes.md
+          if ! grep -q '[^[:space:]]' notes.md; then
+            echo "::error::CHANGELOG.md has no section for $GITHUB_REF_NAME"
+            exit 1
+          fi
+
+      - name: Create the draft (or reuse it on a re-run)
+        run: |
+          if draft=$(gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft 2>/dev/null); then
+            if [ "$draft" = "true" ]; then
+              echo "draft for $GITHUB_REF_NAME exists (re-run); reusing it"
+              exit 0
+            fi
+            echo "::error::$GITHUB_REF_NAME is already published; never re-release a version"
+            exit 1
+          fi
+          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft --verify-tag \
+            --title "roomy $GITHUB_REF_NAME" --notes-file notes.md
+
+  build:
+    name: universal binary
+    needs: draft
+    runs-on: macos-latest
+    permissions:
+      contents: write # upload assets to the draft
+      id-token: write # sign the provenance attestation
+      attestations: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       # rust-toolchain.toml selects the toolchain; add both macOS targets to it.
       - run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
@@ -50,8 +90,7 @@ jobs:
           cargo build --release --locked --target aarch64-apple-darwin
           cargo build --release --locked --target x86_64-apple-darwin
 
-      - id: pack
-        name: Combine, check and pack
+      - name: Combine, check and pack
         run: |
           set -euo pipefail
           name="roomy-${GITHUB_REF_NAME}-universal-apple-darwin"
@@ -68,33 +107,37 @@ jobs:
           cp README.md README.ja.md LICENSE-MIT LICENSE-APACHE CHANGELOG.md "dist/$name/"
           tar -C "dist/$name" -czf "dist/$name.tar.gz" .
           (cd dist && shasum -a 256 "$name.tar.gz" > "$name.tar.gz.sha256")
-          echo "sha256=$(cut -d' ' -f1 "dist/$name.tar.gz.sha256")" >> "$GITHUB_OUTPUT"
 
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: dist/*.tar.gz
 
-      - name: Release notes from CHANGELOG.md
-        env:
-          version: ${{ steps.meta.outputs.version }}
-        run: |
-          awk -v v="$version" '
-            $0 ~ "^## \\[" v "\\]" { on = 1; next }
-            on && /^## \[/ { exit }
-            on { print }
-          ' CHANGELOG.md > notes.md
-          if ! grep -q '[^[:space:]]' notes.md; then
-            echo "::error::CHANGELOG.md has no section for $version"
-            exit 1
-          fi
+      # --clobber: a re-run replaces whatever a failed run left in the draft.
+      - run: gh release upload "$GITHUB_REF_NAME" dist/*.tar.gz dist/*.sha256 --repo "$GITHUB_REPOSITORY" --clobber
 
-      - name: Publish the release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" dist/*.tar.gz dist/*.sha256 --title "roomy $GITHUB_REF_NAME" --notes-file notes.md --verify-tag
+  publish:
+    name: publish the release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # undraft
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Check every asset is attached, then publish
+        run: |
+          name="roomy-${GITHUB_REF_NAME}-universal-apple-darwin.tar.gz"
+          assets=$(gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name')
+          for a in "$name" "$name.sha256"; do
+            if ! grep -qxF "$a" <<<"$assets"; then
+              echo "::error::$a is missing from the draft"
+              exit 1
+            fi
+          done
+          gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft=false --latest
 
   homebrew:
-    needs: build
+    needs: publish
     permissions:
       contents: read
     uses: ./.github/workflows/homebrew.yml

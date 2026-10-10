@@ -15,17 +15,22 @@ Releases are cut from `main` by pushing a tag; `.github/workflows/release.yml` d
    git push origin vX.Y.Z
    ```
 
-The workflow then
+The workflow then runs four jobs; nothing is public until the third:
 
-- checks that the tag matches `Cargo.toml` and runs the tests,
-- builds aarch64 and x86_64, combines them with `lipo`, signs the result ad hoc (the linker
-  signs only the arm64 slice) and verifies the signature,
-- packs `roomy-vX.Y.Z-universal-apple-darwin.tar.gz` with a `.sha256`, attests its build
-  provenance, and publishes a GitHub release with the CHANGELOG section as notes,
-- calls `.github/workflows/homebrew.yml`, which renders `packaging/homebrew/roomy.rb.in` with the
-  release's checksum, pushes it to
-  [masa-tichita/homebrew-tap](https://github.com/masa-tichita/homebrew-tap), then installs from
-  the tap and runs `brew test` on a fresh runner.
+1. **draft** — checks the tag matches `Cargo.toml` and that `CHANGELOG.md` has a section for it
+   (otherwise it stops before building), then creates a draft release with that section as notes.
+2. **build** — tests, builds aarch64 and x86_64, combines them with `lipo`, signs the result ad
+   hoc (the linker signs only the arm64 slice) and verifies it, packs
+   `roomy-vX.Y.Z-universal-apple-darwin.tar.gz` with a `.sha256`, attests its build provenance,
+   and uploads both to the draft.
+3. **publish** — checks both assets are attached, then publishes the release.
+4. **homebrew** — `.github/workflows/homebrew.yml` renders `packaging/homebrew/roomy.rb.in` with
+   the release's checksum, pushes it to
+   [masa-tichita/homebrew-tap](https://github.com/masa-tichita/homebrew-tap), then installs from
+   the tap and runs `brew test` on a fresh runner.
+
+If a run fails before *publish*, fix the cause and re-run the failed jobs: the draft is reused and
+assets are replaced. A published release is never modified.
 
 If only the Homebrew step failed, fix it on `main` and redo it for the existing tag — never
 re-tag a published version:
