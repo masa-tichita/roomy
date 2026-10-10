@@ -1,0 +1,20 @@
+{
+  "name": "roomy-cli",
+  "version": "@VERSION@",
+  "description": "Keeps your Mac roomy: finds what is safe to delete, warns before storage or memory runs out. CLI, TUI and MCP server for people and AI agents.",
+  "keywords": ["macos", "disk", "storage", "cleanup", "cli", "mcp", "mcp-server", "ai-agents"],
+  "homepage": "https://github.com/masa-tichita/roomy",
+  "bugs": "https://github.com/masa-tichita/roomy/issues",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/masa-tichita/roomy.git"
+  },
+  "license": "MIT OR Apache-2.0",
+  "author": "masa-tichita",
+  "bin": {
+    "roomy": "bin/roomy"
+  },
+  "files": ["bin/roomy", "README.md", "LICENSE-MIT", "LICENSE-APACHE"],
+  "os": ["darwin"],
+  "cpu": ["arm64", "x64"]
+}

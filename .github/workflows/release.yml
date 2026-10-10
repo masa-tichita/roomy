@@ -1,6 +1,6 @@
 name: Release
 
-# draft -> build -> publish -> homebrew. Nothing is public until every asset is attached, and a
+# draft -> build -> publish -> homebrew and npm. Nothing is public until every asset is attached, and a
 # missing CHANGELOG section or version mismatch stops the release before anything is built.
 # Re-running a failed run reuses the draft; a published release is never touched.
 
@@ -145,3 +145,30 @@ jobs:
       tag: ${{ github.ref_name }}
     secrets:
       HOMEBREW_TAP_DEPLOY_KEY: ${{ secrets.HOMEBREW_TAP_DEPLOY_KEY }}
+
+  npm:
+    name: publish roomy-cli to npm
+    needs: publish
+    runs-on: macos-latest
+    # npm trusted publishing (OIDC): no npm token is stored. npm accepts tokens only from this
+    # workflow file in the `release` environment, so other jobs cannot publish.
+    environment: release
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          # exact: trusted publishing needs npm >= 11.5.1; Node 24.21.0 ships npm 11.19.0
+          node-version: "24.21.0"
+          registry-url: "https://registry.npmjs.org"
+          package-manager-cache: false # nothing to cache, and no cache in release jobs
+      - run: packaging/npm/build.sh "$GITHUB_REF_NAME" npm-package
+      - name: Publish (provenance is attached automatically)
+        working-directory: npm-package
+        run: npm publish --access public

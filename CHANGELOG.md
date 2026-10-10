@@ -6,6 +6,11 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- npm package `roomy-cli` (`npx roomy-cli`, `npx -y roomy-cli mcp`): the universal binary, no
+  install scripts, published with npm trusted publishing and provenance.
+
 ### Changed
 
 - Scans no longer start the simulator service when every simulator's runtime and device type

@@ -54,6 +54,19 @@ rm tapkey tapkey.pub
 To rotate it, delete the old deploy key in the tap's settings and repeat. Without the secret
 the release is still published and the Homebrew workflow fails with a clear error.
 
+### npm (`roomy-cli`)
+
+The *npm* job publishes `roomy-cli` with npm trusted publishing (OIDC), so no npm token is
+stored. One-time setup on npmjs.com, after the package exists (the very first version has to be
+published by hand: `packaging/npm/build.sh vX.Y.Z out && cd out && npm publish --access public`):
+
+- package `roomy-cli` → Settings → Trusted publisher → GitHub Actions
+- organization or user `masa-tichita`, repository `roomy`, workflow `release.yml`,
+  environment `release`, and allow `npm publish`
+
+The `release` environment in this repository only accepts `v*` tags. A newly added trusted
+publisher must be used successfully within two days.
+
 ## Verify a release
 
 ```sh

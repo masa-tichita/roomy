@@ -69,8 +69,15 @@ brew install masa-tichita/tap/roomy
 brew services start roomy          # background checks and a daily scan
 ```
 
-Universal binary for Apple Silicon and Intel, macOS 13 or newer. Or build it yourself with
-Rust 1.88 or newer:
+Universal binary for Apple Silicon and Intel, macOS 13 or newer. Also on npm, as `roomy-cli`
+(the same binary, no install scripts):
+
+```sh
+npx roomy-cli                      # try it without installing
+npm install -g roomy-cli           # then: roomy
+```
+
+Or build it yourself with Rust 1.88 or newer:
 
 ```sh
 cargo install --git https://github.com/masa-tichita/roomy
@@ -164,6 +171,12 @@ claude mcp add --scope user roomy -- roomy mcp          # Claude Code
 [mcp_servers.roomy]
 command = "roomy"
 args = ["mcp"]
+```
+
+Without a global install, MCP clients can start it through npm:
+
+```json
+{ "mcpServers": { "roomy": { "command": "npx", "args": ["-y", "roomy-cli", "mcp"] } } }
 ```
 
 Use `roomy mcp --read-only` to leave out `roomy_clean`. Desktop apps that do not inherit your

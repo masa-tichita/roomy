@@ -51,7 +51,15 @@ brew install masa-tichita/tap/roomy
 brew services start roomy          # 常駐チェックと日次スキャン
 ```
 
-Apple Silicon と Intel の両方で動く Universal バイナリです（macOS 13 以降）。Rust 1.88 以降で自分でビルドする場合:
+Apple Silicon と Intel の両方で動く Universal バイナリです（macOS 13 以降）。npm にも `roomy-cli` として
+公開しています（中身は同じバイナリで、インストール時のスクリプトはありません）:
+
+```sh
+npx roomy-cli                      # インストールせずに試す
+npm install -g roomy-cli           # その後は roomy で使える
+```
+
+Rust 1.88 以降で自分でビルドする場合:
 
 ```sh
 cargo install --git https://github.com/masa-tichita/roomy
@@ -110,6 +118,12 @@ claude mcp add --scope user roomy -- roomy mcp          # Claude Code
 [mcp_servers.roomy]
 command = "roomy"
 args = ["mcp"]
+```
+
+グローバルにインストールしなくても、MCP クライアントから npm 経由で起動できます:
+
+```json
+{ "mcpServers": { "roomy": { "command": "npx", "args": ["-y", "roomy-cli", "mcp"] } } }
 ```
 
 `roomy mcp --read-only` で削除ツールを除けます。シェルの `PATH` を引き継がないデスクトップアプリでは
