@@ -316,7 +316,10 @@ pub struct Growth {
     pub now: u64,
 }
 
-/// Folders that grew by at least `threshold`. A parent is left out when one child explains most of its growth.
+/// Folders that grew by at least `threshold`. A parent is left out when one child explains most of
+/// its growth. When a shown parent's growth is spread over several smaller parts (three or more,
+/// each under half of it, like the devices in `XCTestDevices`), the parts are left out instead, so
+/// one place does not fill the list. Scan roots never stand in for their parts.
 pub fn growth(prev: &Snapshot, cur: &Snapshot, threshold: u64) -> Vec<Growth> {
     if !prev.comparable(cur) {
         return vec![];
@@ -340,9 +343,25 @@ pub fn growth(prev: &Snapshot, cur: &Snapshot, threshold: u64) -> Vec<Growth> {
             .iter()
             .any(|b| b.path.starts_with(&prefix) && b.delta as f64 >= 0.7 * a.delta as f64)
     };
-    let mut out: Vec<Growth> = grown
+    let shown: Vec<&Growth> = grown.iter().filter(|a| !explained_by_child(a)).collect();
+    let small_parts = |p: &Growth| -> Vec<&str> {
+        let prefix = format!("{}/", p.path);
+        shown
+            .iter()
+            .filter(|a| a.path.starts_with(&prefix) && (a.delta as f64) < 0.5 * p.delta as f64)
+            .map(|a| a.path.as_str())
+            .collect()
+    };
+    let collapsed: HashSet<&str> = shown
         .iter()
-        .filter(|a| !explained_by_child(a))
+        .filter(|p| !cur.roots.contains(&p.path))
+        .map(|p| small_parts(p))
+        .filter(|parts| parts.len() >= 3)
+        .flatten()
+        .collect();
+    let mut out: Vec<Growth> = shown
+        .into_iter()
+        .filter(|a| !collapsed.contains(a.path.as_str()))
         .cloned()
         .collect();
     out.sort_by_key(|g| std::cmp::Reverse(g.delta));
@@ -504,6 +523,33 @@ mod tests {
             .map(|x| x.path)
             .collect();
         assert!(paths.contains(&"/r".to_string()));
+    }
+
+    #[test]
+    fn growth_leaves_out_small_parts_of_a_shown_parent() {
+        // XCTestDevices grew as a whole, each device a little.
+        let g = 1_000_000_000;
+        let d = "/r/XCTestDevices";
+        let mut prev = vec![("/r", 100 * g), (d, 0)];
+        let mut cur = vec![("/r", 200 * g), (d, 61 * g)];
+        let devices: Vec<String> = (0..8).map(|i| format!("{d}/dev{i}/data")).collect();
+        for p in &devices {
+            prev.push((p.as_str(), 0));
+            cur.push((p.as_str(), 4 * g));
+        }
+        // Two parts are not "spread": they stay, and so do the root's parts.
+        prev.extend([("/r/b", 0), ("/r/b/big", 0), ("/r/b/other", 0)]);
+        cur.extend([("/r/b", 10 * g), ("/r/b/big", 6 * g), ("/r/b/other", 4 * g)]);
+        prev.extend([("/r/c", 0), ("/r/e", 0)]);
+        cur.extend([("/r/c", 5 * g), ("/r/e", 5 * g)]);
+        let paths: Vec<_> = growth(&snap(&prev), &snap(&cur), 3 * g)
+            .into_iter()
+            .map(|x| x.path)
+            .collect();
+        assert_eq!(
+            paths,
+            ["/r", d, "/r/b", "/r/b/big", "/r/c", "/r/e", "/r/b/other"]
+        );
     }
 
     #[test]

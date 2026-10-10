@@ -18,6 +18,9 @@ All notable changes are documented here. The format follows
 
 - "In use" checks (`skip_if_running`) match whole program names: the `xcodebuildmcp` MCP server
   no longer counts as `xcodebuild` and turns Xcode caches into *review* (#20).
+- The "grew" list no longer fills up with the parts of one folder that grew as a whole (eight
+  simulator devices under `XCTestDevices`): when growth is spread over three or more smaller
+  parts, only the folder is listed (#22).
 
 ## [0.2.0] - 2026-10-11
 
