@@ -262,6 +262,7 @@ fn evaluate(ctx: &Ctx, rule: &Rule) -> Option<Candidate> {
         category,
         title: Msg::Text(rule.title.clone()),
         bytes,
+        reclaimable: None,
         safety,
         evidence,
         notes: if rule.note.is_empty() {

@@ -93,6 +93,13 @@ pub fn status(cfg: &Config, json: bool) -> bool {
             ]
         )
     );
+    if let Some(p) = sys::purgeable_shown(disk.avail, disk.avail_incl_purgeable) {
+        println!(
+            "{} {}",
+            pad("", w),
+            s.dim(&tf("status.purgeable_line", &[("avail", &fmt_bytes(p))]))
+        );
+    }
     let pressure = sys::pressure_label_i18n(mem.pressure);
     let pressure = match mem.pressure {
         4 => s.red(&pressure),
@@ -157,16 +164,20 @@ pub fn report(r: &Report, verbose: bool) {
             &[("secs", &format!("{:.0}", r.walk.seconds))]
         ))
     );
-    println!(
-        "{}",
-        tf(
-            "report.free",
-            &[
-                ("free", &fmt_bytes(r.disk_avail)),
-                ("total", &fmt_bytes(r.disk_total))
-            ]
-        )
+    let mut free = tf(
+        "report.free",
+        &[
+            ("free", &fmt_bytes(r.disk_avail)),
+            ("total", &fmt_bytes(r.disk_total)),
+        ],
     );
+    if let Some(p) = sys::purgeable_shown(r.disk_avail, r.disk_avail_incl_purgeable) {
+        free.push_str(&s.dim(&format!(
+            " · {}",
+            tf("disk.incl_purgeable", &[("avail", &fmt_bytes(p))])
+        )));
+    }
+    println!("{free}");
     println!();
     println!(
         "{}  {}",
@@ -193,6 +204,12 @@ pub fn report(r: &Report, verbose: bool) {
             c.title
         );
         let indent = " ".repeat(26 + catw);
+        if let Some(b) = c.frees_less() {
+            println!(
+                "{indent}{}",
+                s.yellow(&tf("size.frees", &[("bytes", &fmt_bytes(b))]))
+            );
+        }
         if !c.evidence.is_empty() {
             println!(
                 "{indent}{}",
@@ -390,6 +407,12 @@ pub fn explain(r: &Report, target: &str, max_paths: usize) {
         safety_label(&s, c.safety),
         s.dim(&c.category.render())
     );
+    if let Some(b) = c.frees_less() {
+        println!(
+            "{}",
+            s.yellow(&tf("size.frees", &[("bytes", &fmt_bytes(b))]))
+        );
+    }
     println!("{}", s.dim(&c.path));
     for e in &c.evidence {
         println!("  {} {}", s.green("✓"), e.render());

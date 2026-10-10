@@ -49,6 +49,9 @@ struct AuditEntry<'a> {
     title: String,
     action: &'a Action,
     estimated_bytes: u64,
+    /// Clone-aware estimate, when measured.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    estimated_reclaimable: Option<u64>,
     ok: bool,
     error: Option<String>,
     unattended: bool,
@@ -126,6 +129,12 @@ pub fn run(cfg: &Config, opts: &Opts) -> anyhow::Result<i32> {
             sys::pad_left(&fmt_bytes(c.bytes), 9),
             c.title
         );
+        if let Some(r) = c.frees_less() {
+            println!(
+                "      {}",
+                s.dim(&tf("size.frees", &[("bytes", &fmt_bytes(r))]))
+            );
+        }
         println!("      {}", s.dim(&describe(&c.action, opts.trash)));
     }
     for r in &plan.refused {
@@ -271,6 +280,7 @@ pub fn apply(
             title: c.title.render(),
             action: &c.action,
             estimated_bytes: c.bytes,
+            estimated_reclaimable: c.reclaimable,
             ok: result.is_ok(),
             error: result.as_ref().err().cloned(),
             unattended,
@@ -289,12 +299,14 @@ pub fn apply(
         }
         results.push((c.title.render(), result));
     }
-    let after = sys::disk().avail;
+    let disk = sys::disk();
+    let after = disk.avail;
     done.sort_unstable_by(|a, b| b.cmp(a));
     for i in &done {
         report.candidates.remove(*i);
     }
     report.disk_avail = after;
+    report.disk_avail_incl_purgeable = disk.avail_incl_purgeable;
     state::save(&state::report_path(), report)?;
     Ok(Outcome {
         results,
@@ -429,6 +441,7 @@ mod tests {
             category: crate::i18n::Msg::plain(""),
             title: crate::i18n::Msg::plain(id),
             bytes: 1,
+            reclaimable: None,
             safety,
             evidence: vec![],
             notes: vec![],
@@ -447,6 +460,7 @@ mod tests {
             time: 0,
             disk_total: 0,
             disk_avail: 0,
+            disk_avail_incl_purgeable: None,
             candidates: vec![
                 cand("a", Safety::Safe, paths.clone()),
                 cand("b", Safety::Review, paths.clone()),

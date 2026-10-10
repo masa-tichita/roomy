@@ -55,6 +55,7 @@ fn evaluate(ctx: &Ctx) -> Option<Candidate> {
         category: m("category.files"),
         title: mf("downloads.title", &[("days", &age), ("n", &old.len())]),
         bytes: old.iter().map(|x| x.1).sum(),
+        reclaimable: None,
         safety: Safety::Review,
         evidence: vec![mf("downloads.evidence", &[("days", &age)])],
         notes: vec![mf("downloads.biggest", &[("list", &biggest.join(", "))])],

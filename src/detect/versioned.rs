@@ -80,6 +80,7 @@ fn evaluate(ctx: &Ctx, vd: &VersionedDir) -> Option<Candidate> {
         category: m("category.devtools"),
         title: mf("versioned.title", &[("name", &owner), ("n", &old.len())]),
         bytes: old.iter().map(|p| ctx.sizer.size(p)).sum(),
+        reclaimable: None,
         safety: Safety::Safe,
         evidence: vec![mf("versioned.kept", &[("n", &vd.keep)])],
         notes: vec![],

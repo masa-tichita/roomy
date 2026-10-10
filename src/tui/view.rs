@@ -90,7 +90,7 @@ fn draw_header(f: &mut Frame, app: &App, area: Rect) {
     } else {
         th.safe
     };
-    let label = tf(
+    let disk_label = tf(
         "status.disk_line",
         &[
             ("free", &fmt_bytes(app.disk.avail)),
@@ -98,7 +98,7 @@ fn draw_header(f: &mut Frame, app: &App, area: Rect) {
             ("pct", &((ratio * 100.0).round() as u64)),
         ],
     );
-    gauge_row(f, app, disk_row, &t("tui.disk"), ratio, color, label);
+    let disk = (ratio, color);
 
     let mem_used = app
         .mem
@@ -109,7 +109,7 @@ fn draw_header(f: &mut Frame, app: &App, area: Rect) {
         2 => th.review,
         _ => th.accent,
     };
-    let label = tf(
+    let mem_label = tf(
         "status.memory_line",
         &[
             ("total", &fmt_mem(app.mem.total)),
@@ -121,14 +121,34 @@ fn draw_header(f: &mut Frame, app: &App, area: Rect) {
             ("swap", &fmt_mem(app.mem.swap_used)),
         ],
     );
+
+    // The bars shrink (to 20 columns) before the labels are cut, so the purgeable space fits
+    // on common terminal widths; it is left out when it does not.
+    let width = |s: &str| unicode_width::UnicodeWidthStr::width(s);
+    let max_bar = inner.width as usize * 45 / 100;
+    let room = |label: &str| {
+        (inner.width as usize).saturating_sub(10 + width(label).max(width(&mem_label)))
+    };
+    let mut disk_label = disk_label;
+    if let Some(p) = sys::purgeable_shown(app.disk.avail, app.disk.avail_incl_purgeable) {
+        let full = format!(
+            "{disk_label} · {}",
+            tf("disk.incl_purgeable", &[("avail", &fmt_bytes(p))])
+        );
+        if room(&full) >= 20.min(max_bar) {
+            disk_label = full;
+        }
+    }
+    let bar_w = room(&disk_label).max(20).min(max_bar) as u16;
+    gauge_row(f, app, disk_row, &t("tui.disk"), disk, bar_w, disk_label);
     gauge_row(
         f,
         app,
         mem_row,
         &t("tui.memory"),
-        mem_used,
-        mem_color,
-        label,
+        (mem_used, mem_color),
+        bar_w,
+        mem_label,
     );
 }
 
@@ -164,13 +184,13 @@ fn gauge_row(
     app: &App,
     area: Rect,
     name: &str,
-    ratio: f64,
-    color: ratatui::style::Color,
+    (ratio, color): (f64, ratatui::style::Color),
+    bar_w: u16,
     label: String,
 ) {
     let [name_area, bar_area, label_area] = Layout::horizontal([
         Constraint::Length(8),
-        Constraint::Percentage(45),
+        Constraint::Length(bar_w),
         Constraint::Fill(1),
     ])
     .spacing(1)
@@ -254,7 +274,7 @@ fn draw_candidates(f: &mut Frame, app: &mut App, area: Rect) {
         app.marked
             .iter()
             .filter_map(|i| r.candidates.get(*i))
-            .map(|c| c.bytes)
+            .map(Candidate::frees)
             .sum()
     });
     let mut block = panel(app, title);
@@ -317,6 +337,12 @@ fn draw_candidates(f: &mut Frame, app: &mut App, area: Rect) {
                 Span::raw(" ")
             };
             let mut title = vec![Span::styled(c.title.render(), th.fg(th.text))];
+            if let Some(b) = c.frees_less() {
+                title.push(Span::styled(
+                    format!("  {}", tf("size.frees_short", &[("bytes", &fmt_bytes(b))])),
+                    th.fg(th.review),
+                ));
+            }
             if let Some(tg) = tag(c) {
                 title.push(Span::styled(format!("  {tg}"), th.fg(th.review)));
             }
@@ -611,7 +637,10 @@ fn popup_area(area: Rect, width: u16, height: u16) -> Rect {
 }
 
 fn popup(f: &mut Frame, app: &App, title: String, lines: Vec<Line<'static>>, width: u16) {
-    let height = (lines.len() as u16 + 4).min(f.area().height.saturating_sub(2));
+    // Long lines wrap; count the rows they take (borders and padding use 4 columns).
+    let inner = width.min(f.area().width).saturating_sub(4).max(1) as usize;
+    let rows: usize = lines.iter().map(|l| l.width().max(1).div_ceil(inner)).sum();
+    let height = (rows as u16 + 4).min(f.area().height.saturating_sub(2));
     let area = popup_area(f.area(), width, height);
     f.render_widget(Clear, area);
     let block = Block::bordered()
@@ -664,6 +693,15 @@ fn draw_details(f: &mut Frame, app: &App) {
         Line::styled(c.path.clone(), th.fg(th.dim)),
         Line::raw(""),
     ];
+    if let Some(b) = c.frees_less() {
+        lines.insert(
+            1,
+            Line::styled(
+                tf("size.frees", &[("bytes", &fmt_bytes(b))]),
+                th.fg(th.review),
+            ),
+        );
+    }
     for e in &c.evidence {
         lines.push(Line::from(vec![
             Span::styled("✓ ", th.fg(th.safe)),
@@ -690,13 +728,20 @@ fn draw_confirm(f: &mut Frame, app: &App) {
         return;
     };
     let th = &app.theme;
-    let total: u64 = plan.items.iter().map(|(_, c)| c.bytes).sum();
+    let total: u64 = plan.items.iter().map(|(_, c)| c.frees()).sum();
     let mut lines = vec![];
     for (_, c) in &plan.items {
-        lines.push(Line::from(vec![
+        let mut row = vec![
             Span::styled(format!("{:>9}  ", fmt_bytes(c.bytes)), th.bold(th.text)),
             Span::raw(c.title.render()),
-        ]));
+        ];
+        if let Some(b) = c.frees_less() {
+            row.push(Span::styled(
+                format!("  {}", tf("size.frees_short", &[("bytes", &fmt_bytes(b))])),
+                th.fg(th.review),
+            ));
+        }
+        lines.push(Line::from(row));
         lines.push(Line::styled(
             format!("           {}", describe(&c.action, false)),
             th.fg(th.dim),
@@ -779,6 +824,8 @@ fn draw_help(f: &mut Frame, app: &App) {
     ]));
     lines.push(Line::raw(""));
     lines.push(Line::styled(t("tui.help_safety"), th.fg(th.dim)));
+    lines.push(Line::styled(t("tui.help_frees"), th.fg(th.dim)));
+    lines.push(Line::styled(t("tui.help_purgeable"), th.fg(th.dim)));
     popup(f, app, t("tui.help"), lines, 76);
 }
 

@@ -462,6 +462,72 @@ fn agent_workflow_over_json() {
     assert!(audit.contains("\"unattended\":true"));
 }
 
+/// APFS clones share blocks: a folder of clones is big but frees little. Candidates carry both
+/// numbers, and totals use the one that is really freed.
+#[test]
+fn clones_show_what_removal_really_frees() {
+    let sb = Sandbox::new(&format!(
+        "{BASE}\n[[rules]]\nid = \"test.clones\"\ntitle = \"Clones\"\npaths = [\"~/Library/Caches/Clones\"]\n\
+         target = \"children\"\nsafety = \"safe\"\naction = \"delete\"\n"
+    ));
+    // incompressible, so APFS really allocates it
+    let data: Vec<u8> = (0..20u32 << 20)
+        .map(|i| (i.wrapping_mul(2_654_435_761) >> 13) as u8)
+        .collect();
+    // flushed, so the blocks are allocated before roomy looks
+    let write = |p: &Path, data: &[u8]| {
+        fs::create_dir_all(p.parent().unwrap()).unwrap();
+        let mut f = fs::File::create(p).unwrap();
+        std::io::Write::write_all(&mut f, data).unwrap();
+        f.sync_all().unwrap();
+    };
+    let original = sb.home.join("Golden/original");
+    write(&original, &data);
+    let copy = sb.home.join("Library/Caches/Clones/a/copy");
+    fs::create_dir_all(copy.parent().unwrap()).unwrap();
+    let ok = Command::new("cp")
+        .arg("-c")
+        .arg(&original)
+        .arg(&copy)
+        .status()
+        .unwrap();
+    assert!(ok.success(), "cp -c failed");
+    write(&sb.home.join("Library/Caches/Clones/own"), &data[..1 << 20]);
+    assert!(sb.roomy(&["scan"]).status.success());
+
+    let r = report(&sb);
+    let c = r["candidates"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|c| c["id"] == "test.clones")
+        .unwrap();
+    let bytes = c["bytes"].as_u64().unwrap();
+    let reclaimable = c["reclaimable"].as_u64().unwrap();
+    assert!(bytes >= 21 << 20, "{c}");
+    assert!((1 << 20..3 << 20).contains(&reclaimable), "{c}");
+    assert_eq!(r["reclaimable"]["safe"].as_u64(), Some(reclaimable));
+    assert!(stdout(&sb.roomy(&["report"])).contains("frees about"));
+
+    let p = json(&sb.roomy(&["clean", "test.clones", "--json"]));
+    assert_eq!(p["total_bytes"].as_u64(), Some(bytes));
+    assert!(p["frees_bytes"].as_u64().unwrap() < 3 << 20, "{p}");
+    assert!(
+        original.exists() && copy.exists(),
+        "a dry run removes nothing"
+    );
+}
+
+#[test]
+fn status_shows_space_incl_purgeable() {
+    let sb = Sandbox::new(BASE);
+    let v = json(&sb.roomy(&["status", "--json"]));
+    let free = v["disk"]["free"].as_u64().unwrap();
+    let incl = v["disk"]["available_incl_purgeable"].as_u64().unwrap();
+    assert!(incl + 1_000_000_000 >= free, "{v}");
+    assert!(v["disk"]["available_incl_purgeable_text"].is_string());
+}
+
 #[test]
 fn unattended_removal_is_capped() {
     let sb = Sandbox::new(&format!(

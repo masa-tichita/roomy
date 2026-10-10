@@ -2,7 +2,8 @@
 //!
 //! Sizes are allocated blocks (like `du`). Hard links count once. Symbolic links are not followed
 //! and other volumes are not entered. APFS clones cannot be told apart, so folders full of clones
-//! look bigger than the space their removal would free.
+//! look bigger than the space their removal would free; `reclaimable` measures that for removal
+//! candidates only, because it costs one more system call per file.
 
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -10,7 +11,7 @@ use std::collections::{BTreeMap, HashSet};
 use std::fs;
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Mutex, OnceLock};
 use std::time::Instant;
 
@@ -184,6 +185,94 @@ pub fn measure(p: &Path) -> u64 {
     md.blocks() * 512 + pool().install(|| w.dir_size(p, md.dev(), 0))
 }
 
+/// Walker for `reclaimable`.
+struct Private {
+    deadline: Instant,
+    seen_links: Mutex<HashSet<(u64, u64)>>,
+    /// At least one file reported its private size (the volume supports it).
+    reported: AtomicBool,
+    late: AtomicBool,
+}
+
+impl Private {
+    fn file(&self, p: &Path, md: &fs::Metadata) -> u64 {
+        if md.nlink() > 1
+            && !self
+                .seen_links
+                .lock()
+                .expect(POISON)
+                .insert((md.dev(), md.ino()))
+        {
+            return 0;
+        }
+        match crate::sys::private_size(p) {
+            Some(b) => {
+                self.reported.store(true, Ordering::Relaxed);
+                b
+            }
+            None => md.blocks() * 512,
+        }
+    }
+
+    fn dir(&self, path: &Path, dev: u64) -> u64 {
+        if Instant::now() >= self.deadline {
+            self.late.store(true, Ordering::Relaxed);
+            return 0;
+        }
+        let Ok(rd) = fs::read_dir(path) else { return 0 };
+        let entries: Vec<fs::DirEntry> = rd.filter_map(Result::ok).collect();
+        entries
+            .par_iter()
+            .map(|e| {
+                let Ok(md) = e.metadata() else { return 0 };
+                let ft = md.file_type();
+                if ft.is_symlink() {
+                    0
+                } else if ft.is_dir() {
+                    if md.dev() == dev {
+                        md.blocks() * 512 + self.dir(&e.path(), dev)
+                    } else {
+                        0
+                    }
+                } else {
+                    self.file(&e.path(), &md)
+                }
+            })
+            .sum()
+    }
+}
+
+/// What removing `paths` would really free: like `measure`, but each file counts only the
+/// blocks it does not share with APFS clones. Blocks shared only among `paths` themselves are
+/// left out too, so this is a lower bound. None when the volume does not report private sizes
+/// or the walk is still running at `deadline` (too many files).
+pub fn reclaimable(paths: &[PathBuf], deadline: Instant) -> Option<u64> {
+    let w = Private {
+        deadline,
+        seen_links: Mutex::new(HashSet::new()),
+        reported: AtomicBool::new(false),
+        late: AtomicBool::new(false),
+    };
+    let total: u64 = pool().install(|| {
+        paths
+            .par_iter()
+            .map(|p| {
+                let Ok(md) = fs::symlink_metadata(p) else {
+                    return 0;
+                };
+                if md.is_dir() {
+                    md.blocks() * 512 + w.dir(p, md.dev())
+                } else if md.file_type().is_symlink() {
+                    0
+                } else {
+                    w.file(p, &md)
+                }
+            })
+            .sum()
+    });
+    (w.reported.into_inner() && !w.late.into_inner()).then_some(total)
+}
+
 /// Size from the snapshot when recorded there, measured otherwise.
 pub struct Sizer {
     pub snap: Snapshot,
@@ -302,6 +391,49 @@ mod tests {
         assert!(!has(&root.join("small")));
         let total = snap.entries[&*root.to_string_lossy()];
         assert!(total < 4 << 20, "excluded folder was counted");
+    }
+
+    #[test]
+    fn reclaimable_leaves_out_blocks_shared_with_clones() {
+        let d = tempfile::tempdir().unwrap();
+        let root = d.path().canonicalize().unwrap();
+        fs::create_dir_all(root.join("clones/sub")).unwrap();
+        // incompressible, so APFS really allocates it
+        let data: Vec<u8> = (0..8u32 << 20)
+            .map(|i| (i.wrapping_mul(2_654_435_761) >> 13) as u8)
+            .collect();
+        let write = |p: &Path, data: &[u8]| {
+            // flushed, so the blocks are allocated before we look
+            let mut f = fs::File::create(p).unwrap();
+            std::io::Write::write_all(&mut f, data).unwrap();
+            f.sync_all().unwrap();
+        };
+        write(&root.join("original"), &data);
+        for to in ["clones/a", "clones/sub/b"] {
+            let ok = std::process::Command::new("cp")
+                .arg("-c")
+                .arg(root.join("original"))
+                .arg(root.join(to))
+                .status()
+                .unwrap();
+            assert!(ok.success(), "cp -c failed");
+        }
+        write(&root.join("clones/own"), &data[..1 << 20]);
+        let dir = root.join("clones");
+        let far = Instant::now() + std::time::Duration::from_secs(60);
+
+        let allocated = measure(&dir);
+        let private = reclaimable(std::slice::from_ref(&dir), far).expect("APFS reports it");
+        assert!(allocated >= 17 << 20, "allocated {allocated}");
+        assert!(
+            (1 << 20..2 << 20).contains(&private),
+            "only the file of its own counts: {private}"
+        );
+        // a plain file is all private
+        let own = reclaimable(&[dir.join("own")], far).unwrap();
+        assert!(own >= 1 << 20 && own <= measure(&dir.join("own")), "{own}");
+        // out of time: not measured rather than wrong
+        assert_eq!(reclaimable(&[dir], Instant::now()), None);
     }
 
     fn snap(entries: &[(&str, u64)]) -> Snapshot {

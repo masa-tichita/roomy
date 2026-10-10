@@ -64,6 +64,7 @@ fn evaluate(ctx: &Ctx, label: &str, dir: &Path) -> Option<Candidate> {
         category: m("category.devtools"),
         title: mf("editor.title", &[("editor", &label), ("n", &old.len())]),
         bytes: old.iter().map(|p| ctx.sizer.size(p)).sum(),
+        reclaimable: None,
         safety: Safety::Safe,
         evidence: vec![m("editor.evidence")],
         notes: vec![],

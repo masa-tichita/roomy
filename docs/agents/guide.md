@@ -22,6 +22,13 @@ is re-checked right before it happens and logged.
 - `safety: "safe"` — comes back by itself or is re-downloaded when needed.
 - `safety: "review"` — probably unneeded, but the user must look first (worktrees holding
   `.env` files, Docker volumes, models that are slow to download, old downloads).
+- `bytes` / `size` — allocated size of what would be removed (like `du`).
+- `reclaimable` — what removing it really frees: APFS clones share blocks, so this can be much
+  smaller than `bytes` (simulator devices, copies made with `cp -c`). Missing or `null` when not
+  measured (commands, other file systems). Totals (`reclaimable.safe` / `.review`, a plan's
+  `frees_bytes`) use it where measured. Quote this number when telling the user what they gain.
+- `disk.free` — unused space (like `df`); warnings use it. `disk.available_incl_purgeable` also
+  counts purgeable space macOS clears on demand, which is what Finder shows as available.
 - `action.kind: "manual"` — roomy will not remove it (e.g. apps); pass on `action.hint`.
 - `refused` in a clean result — not removed, with the reason. Do not work around it.
 

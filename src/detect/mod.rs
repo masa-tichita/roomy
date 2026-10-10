@@ -11,11 +11,12 @@ pub mod worktree;
 mod xcode;
 
 use crate::config::Config;
-use crate::model::{Candidate, Excluded};
+use crate::model::{Action, Candidate, Excluded};
 use crate::walk::Sizer;
 use std::cell::OnceCell;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
 
 pub struct Ctx<'a> {
     pub cfg: &'a Config,
@@ -97,15 +98,34 @@ pub fn detect_all(ctx: &Ctx) -> (Vec<Candidate>, Vec<Excluded>) {
     });
     let mut ids = HashSet::new();
     found.retain(|c| ids.insert(c.id.clone()));
-    found.sort_by(|a, b| b.bytes.cmp(&a.bytes).then_with(|| a.id.cmp(&b.id)));
+    let deadline = Instant::now() + RECLAIMABLE_BUDGET;
+    for c in &mut found {
+        c.reclaimable = reclaimable(c, deadline);
+    }
+    // Biggest real gains first.
+    found.sort_by(|a, b| b.frees().cmp(&a.frees()).then_with(|| a.id.cmp(&b.id)));
     (found, excluded)
+}
+
+/// Time for measuring what candidates really free, on top of the disk walk. About a million
+/// files on an Apple Silicon Mac; candidates not measured by then keep only `bytes`.
+const RECLAIMABLE_BUDGET: Duration = Duration::from_secs(30);
+
+/// Clone-aware size of a candidate that removes paths. Commands and manual actions remove
+/// things roomy cannot list, so they are not measured.
+fn reclaimable(c: &Candidate, deadline: Instant) -> Option<u64> {
+    let Action::Paths { paths, .. } = &c.action else {
+        return None;
+    };
+    let paths: Vec<PathBuf> = paths.iter().map(PathBuf::from).collect();
+    crate::walk::reclaimable(&paths, deadline)
 }
 
 /// Re-evaluates one candidate now. Returns the fresh candidate (its action is what will run),
 /// or why it no longer qualifies.
 pub fn recheck(ctx: &Ctx, c: &Candidate) -> Result<Candidate, String> {
     let source = c.source.split(':').next().unwrap_or("");
-    let fresh = match source {
+    let mut fresh = match source {
         _ if !ctx.detector_on(source) => Err(crate::i18n::m("recheck.detector_disabled")),
         "rule" => crate::rules::recheck(ctx, c),
         "cache" => caches::recheck(ctx, c),
@@ -130,5 +150,6 @@ pub fn recheck(ctx: &Ctx, c: &Candidate) -> Result<Candidate, String> {
             &[("why", &why.join(" / "))],
         ));
     }
+    fresh.reclaimable = reclaimable(&fresh, Instant::now() + RECLAIMABLE_BUDGET);
     Ok(fresh)
 }

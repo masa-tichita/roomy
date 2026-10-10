@@ -65,8 +65,17 @@ Claude Code などのエージェントからも扱えるようにする。終�
 - 低優先度で動かす: `setiopolicy_np(IOPOL_THROTTLE)` ＋ launchd の `ProcessType=Background`。
 - 読めなかったフォルダ数を記録し、権限不足が原因なら `doctor` へ誘導。
 - **APFS クローン**: 割り当てサイズはクローン共有分も数えるため、XCTestDevices のように
-  実際に空く量が表示より小さくなる。削除候補に限り `getattrlist(ATTR_CMNEXT_PRIVATESIZE)` で
-  「消したら実際に空く量」を測る（**要検証**: 対応 OS と速度。使えなければ注記のみ）。
+  実際に空く量が表示より小さくなる。削除候補（パスを消すもの）に限り
+  `getattrlist(ATTR_CMNEXT_PRIVATESIZE)`（macOS 10.15+）で「消したら実際に空く量」を測り、
+  候補の `reclaimable` に入れる（`bytes` の意味は変えない）。
+  - 検証（macOS 26 / APFS）: `cp -c` の複製は private 0、一部を書き換えると書き換えた分だけになる。
+    速度は 1 ファイル 1 システムコールで、`~/Library/Developer`（4.3 万ファイル）が約 1 秒、
+    `~/Library`（109 万ファイル）が約 21 秒。走査全体の時間に対し候補分だけなので許容範囲。
+  - 候補全体で 30 秒の予算を設け、超えた候補や属性を返さないファイルシステムでは測らない
+    （`bytes` だけを使う）。
+  - 候補の内側どうしで共有するブロック（両方消せば空く）は数えないので、値は下限。
+  - 合計・並び順・TUI の選択量・削除確認の見込み量は `reclaimable`（無ければ `bytes`）を使う。
+    無人実行の上限（`max_unattended_gb`）は消すデータ量の上限なので `bytes` のまま。
 
 ### 4.2 増加検出
 
@@ -192,6 +201,9 @@ Homebrew 経由なら formula の `service`（`run_type :interval`）で同じ L
 - メッセージは `locales/en.toml` / `locales/ja.toml`。全キーが両方にあることをテストで保証。
 - 端末なら色付き（`NO_COLOR` を尊重）。日本語の桁揃えは表示幅（`unicode-width`）で行う。
 - 容量は Finder と同じ 10 進（GB）。
+- 空き容量は `statfs`（`df` と同じ。しきい値・通知はこれ）と、Finder と同じ「パージ可能込み」
+  （`NSURLVolumeAvailableCapacityForImportantUsageKey`）の両方を出す。後者は macOS が必要に応じて
+  消すキャッシュやローカルスナップショットを含むため、すぐ使える量より大きく見えることがある。
 
 ## 9. ファイル配置
 
@@ -256,6 +268,5 @@ Homebrew 経由なら formula の `service`（`run_type :interval`）で同じ L
 ## 15. 未決事項
 
 - 名前
-- `ATTR_CMNEXT_PRIVATESIZE` の実用性（対応 OS・速度）
 - Developer ID 署名をするか（費用）
 - Intel の CI ランナーの可用性

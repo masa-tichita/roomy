@@ -72,6 +72,7 @@ fn evaluate(
         category: m("category.cache"),
         title: mf("cache.app_title", &[("name", &name)]),
         bytes,
+        reclaimable: None,
         safety,
         evidence,
         notes: vec![m("cache.app_note")],

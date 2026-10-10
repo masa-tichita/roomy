@@ -99,7 +99,10 @@ pub fn mtime(p: &Path) -> Option<i64> {
 #[derive(Clone, Copy, Default)]
 pub struct Disk {
     pub total: u64,
+    /// Free space (`statfs`, like `df`). Thresholds and alerts use this one.
     pub avail: u64,
+    /// Free plus purgeable space, the "available" of Finder. None when unknown.
+    pub avail_incl_purgeable: Option<u64>,
 }
 
 /// The data volume (where user files live). Same numbers as `df`; purgeable space is not counted as free.
@@ -114,11 +117,80 @@ pub fn disk() -> Disk {
                 return Disk {
                     total: s.f_blocks * b,
                     avail: s.f_bavail * b,
+                    avail_incl_purgeable: avail_incl_purgeable(),
                 };
             }
         }
     }
     Disk::default()
+}
+
+/// Free plus purgeable space when it adds something visible next to free space (0.1 GB or more).
+pub fn purgeable_shown(avail: u64, incl_purgeable: Option<u64>) -> Option<u64> {
+    incl_purgeable.filter(|&p| p >= avail + 100_000_000)
+}
+
+/// Available space as Finder and System Settings show it: free space plus purgeable space
+/// (caches, local snapshots, …) macOS clears when something important needs room.
+/// None when the volume does not report it.
+pub fn avail_incl_purgeable() -> Option<u64> {
+    use objc2_foundation::{
+        NSNumber, NSString, NSURL, NSURLVolumeAvailableCapacityForImportantUsageKey,
+    };
+    let url = NSURL::fileURLWithPath(&NSString::from_str("/System/Volumes/Data"));
+    let mut value = None;
+    // SAFETY: `value` is the out-parameter type the method declares (an optional object), and
+    // the key is Foundation's own constant, which is valid for the life of the process.
+    unsafe {
+        url.getResourceValue_forKey_error(
+            &mut value,
+            NSURLVolumeAvailableCapacityForImportantUsageKey,
+        )
+        .ok()?;
+    }
+    let n = value?.downcast::<NSNumber>().ok()?;
+    u64::try_from(n.longLongValue()).ok().filter(|&b| b > 0)
+}
+
+/// Bytes of a file that are not shared with APFS clones: what deleting it frees
+/// (`ATTR_CMNEXT_PRIVATESIZE`, macOS 10.15+). None if the file system does not report it.
+/// Does not follow symbolic links.
+pub fn private_size(path: &Path) -> Option<u64> {
+    use std::os::unix::ffi::OsStrExt;
+    /// What getattrlist writes: the length, the attributes it returned, then the private size.
+    /// Every field is naturally aligned, so `repr(C)` matches the kernel's packing.
+    #[repr(C)]
+    struct Buf {
+        length: u32,
+        returned: libc::attribute_set_t,
+        private_size: libc::off_t,
+    }
+    let c = CString::new(path.as_os_str().as_bytes()).ok()?;
+    // SAFETY: both are plain old data, so all-zero is a valid value.
+    let (mut req, mut buf) = unsafe {
+        (
+            std::mem::zeroed::<libc::attrlist>(),
+            std::mem::zeroed::<Buf>(),
+        )
+    };
+    req.bitmapcount = libc::ATTR_BIT_MAP_COUNT;
+    req.commonattr = libc::ATTR_CMN_RETURNED_ATTRS;
+    // With FSOPT_ATTR_CMN_EXTENDED the `forkattr` group selects extended common attributes.
+    req.forkattr = libc::ATTR_CMNEXT_PRIVATESIZE;
+    // SAFETY: the path is NUL-terminated, `req` is a valid attribute list, and the kernel
+    // writes at most `size_of::<Buf>()` bytes into `buf`, which is read only on success.
+    let r = unsafe {
+        libc::getattrlist(
+            c.as_ptr(),
+            (&raw mut req).cast(),
+            (&raw mut buf).cast(),
+            size_of::<Buf>(),
+            libc::FSOPT_NOFOLLOW | libc::FSOPT_ATTR_CMN_EXTENDED,
+        )
+    };
+    // Volumes that cannot tell leave the attribute out of `returned`.
+    (r == 0 && buf.returned.forkattr & libc::ATTR_CMNEXT_PRIVATESIZE != 0)
+        .then(|| u64::try_from(buf.private_size).unwrap_or(0))
 }
 
 // ---- memory ----
@@ -614,6 +686,43 @@ mod tests {
         assert_eq!(fmt_bytes(0), "0 B");
         assert_eq!(fmt_mem(36 << 30), "36 GB");
         assert_eq!(fmt_mem(3 << 29), "1.5 GB");
+    }
+
+    #[test]
+    fn available_incl_purgeable_is_reported() {
+        // Every APFS data volume reports it; purgeable space only ever adds to free space,
+        // but both numbers move, so allow some slack.
+        let d = disk();
+        let p = d.avail_incl_purgeable.expect("not reported");
+        assert!(p <= d.total, "{p} > total {}", d.total);
+        assert!(p + 1_000_000_000 >= d.avail, "{p} < free {}", d.avail);
+    }
+
+    #[test]
+    fn private_size_of_clones() {
+        let d = tempfile::tempdir().unwrap();
+        let (a, b) = (d.path().join("a"), d.path().join("b"));
+        // incompressible, so APFS really allocates it
+        let data: Vec<u8> = (0..4u32 << 20)
+            .map(|i| (i.wrapping_mul(2_654_435_761) >> 13) as u8)
+            .collect();
+        // flushed, so the blocks are allocated before we look
+        let mut f = File::create(&a).unwrap();
+        std::io::Write::write_all(&mut f, &data).unwrap();
+        f.sync_all().unwrap();
+        assert!(private_size(&a).expect("APFS reports it") >= 4 << 20);
+        let ok = Command::new("cp")
+            .arg("-c")
+            .arg(&a)
+            .arg(&b)
+            .status()
+            .unwrap();
+        assert!(ok.success());
+        assert!(
+            private_size(&b).unwrap() < 1 << 20,
+            "a clone shares its blocks"
+        );
+        assert_eq!(private_size(&d.path().join("missing")), None);
     }
 
     #[test]

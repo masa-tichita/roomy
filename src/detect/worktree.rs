@@ -339,6 +339,7 @@ pub fn evaluate(ctx: &Ctx, w: &Path) -> Result<Candidate, Msg> {
         category: m("category.worktree"),
         title: mf("wt.title", &[("repo", &repo), ("name", &name)]),
         bytes: ctx.sizer.size(w),
+        reclaimable: None,
         safety,
         evidence,
         notes,

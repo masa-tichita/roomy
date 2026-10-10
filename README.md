@@ -37,6 +37,12 @@ explain it to you, and remove only what you approve — through the same safety 
   touched 12 days ago", "keeps the newest 2 versions", "marked obsolete by the editor".
 - **Finds what grew.** One fast parallel walk records the size of every large folder; the next
   scan shows which ones grew, pointing at the folder that caused it rather than its parents.
+- **Counts what you really get back.** APFS clones (simulator devices, `cp -c` copies) share
+  their blocks, so a folder can take 33 GB yet free only 10 GB. For removal candidates roomy
+  measures what removing them really frees and shows it next to the size; totals use it.
+- **Shows both kinds of free space.** *Free* is unused space, as `df` reports it; warnings use it.
+  *Incl. purgeable* adds what macOS clears on demand (caches, local snapshots), which is what
+  Finder and System Settings call available.
 - **Warns early.** A small background service checks every 15 minutes and notifies you when free
   space is low or drops suddenly, or when memory pressure or swap get high.
 
@@ -176,7 +182,11 @@ The workflow: `report --json` → `explain <id> --json` → propose to the user 
 **Output contract.** `status`, `scan`, `report`, `explain`, `clean`, `top`, `history`, `rules` and
 `doctor` take `--json`. Every document is an object with `"schema": 1`; text is always English;
 errors are `{"schema": 1, "error": "…"}`. JSON is compact when piped and indented at a terminal.
-`report --json` is a summary (no path lists); `--full` gives everything. Fields may be added
+`report --json` is a summary (no path lists); `--full` gives everything.
+Sizes: a candidate's `bytes` is its allocated size (like `du`) and `reclaimable` what removing it
+frees once blocks shared with APFS clones are left out (absent or `null` when not measured, e.g.
+for commands); `reclaimable` totals and `frees_bytes` in plans use it. `disk.free` is `statfs` free
+space (thresholds use it) and `disk.available_incl_purgeable` adds purgeable space, like Finder. Fields may be added
 within a schema version; anything else bumps it.
 
 | Exit code | Meaning |

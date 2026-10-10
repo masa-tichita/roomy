@@ -67,6 +67,7 @@ pub fn run(cfg: &Config, background: bool) -> anyhow::Result<Report> {
         time: sys::now(),
         disk_total: disk.total,
         disk_avail: disk.avail,
+        disk_avail_incl_purgeable: disk.avail_incl_purgeable,
         candidates,
         growth,
         growth_since,

@@ -122,7 +122,7 @@ fn tools(read_only_server: bool) -> Vec<Value> {
         tool(
             "roomy_status",
             "Status",
-            "Free disk space, memory pressure, swap, top memory users and a summary of the last scan.",
+            "Free disk space (and Finder's available space incl. purgeable), memory pressure, swap, top memory users and a summary of the last scan.",
             &none,
             true,
             false,
@@ -130,7 +130,7 @@ fn tools(read_only_server: bool) -> Vec<Value> {
         tool(
             "roomy_report",
             "Last report",
-            "The last scan's removal candidates (id, size, safety, reasons, action) and folders that grew. Instant.",
+            "The last scan's removal candidates (id, size, what removal really frees, safety, reasons, action) and folders that grew. Instant.",
             &none,
             true,
             false,

@@ -18,7 +18,7 @@ clap = { version = "4.5", features = ["derive"] }
 clap_complete = "4.6"
 clap_mangen = "0.3"
 libc = "0.2"
-objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSString", "NSURL", "NSFileManager", "NSError"] }
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSString", "NSURL", "NSFileManager", "NSError", "NSValue"] }
 ratatui = { version = "0.30", default-features = false, features = ["crossterm", "layout-cache"] }
 rayon = "1.10"
 serde = { version = "1", features = ["derive"] }

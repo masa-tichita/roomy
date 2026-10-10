@@ -42,6 +42,8 @@ pub fn status(cfg: &Config) -> (Value, bool) {
             "total": disk.total,
             "free": disk.avail,
             "free_text": fmt_bytes(disk.avail),
+            "available_incl_purgeable": disk.avail_incl_purgeable,
+            "available_incl_purgeable_text": disk.avail_incl_purgeable.map(fmt_bytes),
             "low": disk_low,
         },
         "memory": {
@@ -84,6 +86,8 @@ pub fn candidate_brief(n: usize, c: &Candidate) -> Value {
         "category": en(&c.category),
         "bytes": c.bytes,
         "size": fmt_bytes(c.bytes),
+        "reclaimable": c.reclaimable,
+        "reclaimable_text": c.reclaimable.map(fmt_bytes),
         "safety": c.safety,
         "path": c.path,
         "why": en_all(&c.evidence),
@@ -97,7 +101,12 @@ pub fn summary(r: &Report) -> Value {
     json!({
         "schema": crate::app::SCHEMA,
         "time": r.time,
-        "disk": { "total": r.disk_total, "free": r.disk_avail, "free_text": fmt_bytes(r.disk_avail) },
+        "disk": {
+            "total": r.disk_total,
+            "free": r.disk_avail,
+            "free_text": fmt_bytes(r.disk_avail),
+            "available_incl_purgeable": r.disk_avail_incl_purgeable,
+        },
         "reclaimable": {
             "safe": r.total(Safety::Safe),
             "safe_text": fmt_bytes(r.total(Safety::Safe)),
@@ -180,11 +189,14 @@ pub fn explain(r: &Report, target: &str, max_paths: usize) -> Result<Value, Stri
 
 pub fn plan(plan: &Plan) -> Value {
     let total: u64 = plan.items.iter().map(|(_, c)| c.bytes).sum();
+    let frees: u64 = plan.items.iter().map(|(_, c)| c.frees()).sum();
     json!({
         "schema": crate::app::SCHEMA,
         "dry_run": true,
         "total_bytes": total,
         "total_text": fmt_bytes(total),
+        "frees_bytes": frees,
+        "frees_text": fmt_bytes(frees),
         "plan": plan.items.iter().map(|(i, c)| candidate_brief(i + 1, c)).collect::<Vec<_>>(),
         "refused": refused(plan),
     })

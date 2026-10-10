@@ -98,6 +98,7 @@ fn evaluate(ctx: &Ctx, p: &Path) -> Option<Candidate> {
         category: m("category.apps"),
         title: Msg::plain(display),
         bytes,
+        reclaimable: None,
         safety: Safety::Review,
         evidence: vec![evidence],
         notes: vec![],

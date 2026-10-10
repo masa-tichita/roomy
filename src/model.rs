@@ -49,13 +49,35 @@ pub struct Candidate {
     pub path: String,
     pub category: Msg,
     pub title: Msg,
+    /// Allocated size of what would be removed (like `du`).
     pub bytes: u64,
+    /// What removing it would really free: `bytes` minus blocks shared with APFS clones.
+    /// Measured for path removals only; None when not measured (commands, other file systems,
+    /// too many files).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reclaimable: Option<u64>,
     pub safety: Safety,
     /// Facts the decision is based on ("pushed", "no uncommitted changes", ...).
     pub evidence: Vec<Msg>,
     /// Caveats.
     pub notes: Vec<Msg>,
     pub action: Action,
+}
+
+impl Candidate {
+    /// Best estimate of the space removing it frees: the clone-aware measurement when there is one.
+    pub fn frees(&self) -> u64 {
+        self.reclaimable.unwrap_or(self.bytes)
+    }
+
+    /// The clone-aware size when it is clearly smaller than `bytes` (at least 10% and 10 MB),
+    /// i.e. when it is worth showing both numbers.
+    pub fn frees_less(&self) -> Option<u64> {
+        self.reclaimable.filter(|&r| {
+            let shared = self.bytes.saturating_sub(r);
+            shared >= 10_000_000 && shared >= self.bytes / 10
+        })
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -79,6 +101,9 @@ pub struct Report {
     pub time: i64,
     pub disk_total: u64,
     pub disk_avail: u64,
+    /// Free plus purgeable space, as Finder shows it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub disk_avail_incl_purgeable: Option<u64>,
     pub candidates: Vec<Candidate>,
     pub growth: Vec<Growth>,
     /// Time of the snapshot `growth` is compared against.
@@ -88,11 +113,12 @@ pub struct Report {
 }
 
 impl Report {
+    /// Space the candidates of one kind would free (clone-aware where measured).
     pub fn total(&self, safety: Safety) -> u64 {
         self.candidates
             .iter()
             .filter(|c| c.safety == safety)
-            .map(|c| c.bytes)
+            .map(Candidate::frees)
             .sum()
     }
 }

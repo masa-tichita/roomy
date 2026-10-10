@@ -20,6 +20,8 @@
 
 "status.disk" = "Disk"
 "status.disk_line" = "{free} free of {total} ({pct}% used)"
+"status.purgeable_line" = "{avail} incl. purgeable space, as Finder shows it (macOS frees it when needed; warnings use free space)"
+"disk.incl_purgeable" = "{avail} incl. purgeable"
 "status.memory" = "Memory"
 "status.memory_line" = "{total} · {free} free · pressure {pressure} · swap {swap}"
 "status.top" = "Top memory"
@@ -43,6 +45,8 @@
 "report.excluded_count" = "{n} worktrees were left alone (in use, unpushed, recent…). `roomy report -v` shows why."
 "report.skipped_protected" = "Protected folders (Documents, Downloads, other apps' data) were skipped because roomy has no Full Disk Access. See `roomy doctor`."
 "report.unreadable" = "{n} folders could not be read (permissions). See `roomy doctor`."
+"size.frees" = "frees about {bytes}; the rest is shared with APFS clones"
+"size.frees_short" = "frees {bytes}"
 "report.next" = "Remove with `roomy clean <number…>` or `roomy clean --all-safe`. Add -n to preview."
 
 "rule.running" = "in use: {what}"
@@ -229,7 +233,7 @@
 "tui.key_open" = "open"
 "tui.key_up" = "up"
 "tui.press_any_key" = "any key to close"
-"tui.confirm_yes" = "remove ~{bytes}"
+"tui.confirm_yes" = "remove, frees ~{bytes}"
 "tui.confirm_no" = "cancel"
 "tui.nothing_to_do" = "Nothing can be removed. Close with any key."
 "tui.result" = "Done"
@@ -239,6 +243,8 @@
 "tui.legend_safe" = "safe: comes back by itself or is re-downloaded"
 "tui.legend_review" = "review: look before removing"
 "tui.help_safety" = "Everything is re-checked right before removal, and protected folders are never touched."
+"tui.help_purgeable" = "Disk: free is unused space (like df) and drives the warnings; incl. purgeable adds caches and snapshots macOS frees on demand (what Finder shows)."
+"tui.help_frees" = "frees X: APFS clones share blocks, so removing a candidate frees less than its size."
 
 "guide.installed" = "Installed the Claude Code skill at {path}."
 "guide.exists" = "{path} already exists; pass --force to overwrite."

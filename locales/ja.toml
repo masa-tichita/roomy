@@ -19,6 +19,8 @@
 
 "status.disk" = "ディスク"
 "status.disk_line" = "空き {free} / {total}（使用 {pct}%）"
+"status.purgeable_line" = "パージ可能な領域を含め {avail}（Finder の表示。必要になると macOS が解放する。警告は空き容量で判定）"
+"disk.incl_purgeable" = "パージ可能込み {avail}"
 "status.memory" = "メモリ"
 "status.memory_line" = "{total} · 空き {free} · 逼迫度 {pressure} · スワップ {swap}"
 "status.top" = "メモリ上位"
@@ -42,6 +44,8 @@
 "report.excluded_count" = "{n} 個の worktree は対象外にしました（使用中・未 push・最近使用など）。理由は `roomy report -v`。"
 "report.skipped_protected" = "フルディスクアクセスが無いため、保護フォルダ（書類・ダウンロード・他アプリのデータ）は走査していません。`roomy doctor` を参照。"
 "report.unreadable" = "{n} 個のフォルダを読めませんでした（権限）。`roomy doctor` を参照。"
+"size.frees" = "実際に空くのは約 {bytes}（残りは APFS クローンと共有）"
+"size.frees_short" = "実際は {bytes}"
 "report.next" = "削除は `roomy clean <番号…>` または `roomy clean --all-safe`。-n で事前確認。"
 
 "rule.running" = "使用中: {what}"
@@ -228,7 +232,7 @@
 "tui.key_open" = "開く"
 "tui.key_up" = "上へ"
 "tui.press_any_key" = "何かキーで閉じる"
-"tui.confirm_yes" = "約 {bytes} を削除"
+"tui.confirm_yes" = "削除（約 {bytes} 空く）"
 "tui.confirm_no" = "キャンセル"
 "tui.nothing_to_do" = "削除できるものはありません。何かキーで閉じます。"
 "tui.result" = "完了"
@@ -238,6 +242,8 @@
 "tui.legend_safe" = "安全: 自動で作り直されるか、再ダウンロードされる"
 "tui.legend_review" = "要確認: 中身を見てから削除"
 "tui.help_safety" = "削除の直前に必ず再確認し、保護フォルダには触れません。"
+"tui.help_purgeable" = "ディスク: 空きは未使用の領域（df と同じ）で、警告はこれで判定。パージ可能込みは macOS が必要に応じて消すキャッシュやスナップショットを足した値（Finder の表示）。"
+"tui.help_frees" = "実際は X: APFS クローンはブロックを共有するため、削除で空く量はサイズより小さくなる。"
 
 "guide.installed" = "Claude Code のスキルを {path} に入れました。"
 "guide.exists" = "{path} は既にあります。上書きするには --force を付けてください。"

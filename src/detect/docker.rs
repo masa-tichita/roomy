@@ -74,6 +74,7 @@ fn candidates(ctx: &Ctx) -> Vec<Candidate> {
             category: Msg::plain("Docker"),
             title,
             bytes,
+            reclaimable: None,
             safety,
             evidence: vec![m("docker.evidence")],
             notes: vec![note],
