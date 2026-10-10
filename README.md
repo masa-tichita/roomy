@@ -73,8 +73,8 @@ Universal binary for Apple Silicon and Intel, macOS 13 or newer. Also on npm, as
 (the same binary, no install scripts):
 
 ```sh
-npx roomy-cli                      # try it without installing
-npm install -g roomy-cli           # then: roomy
+npx roomy-cli                      # try it without installing (also: bunx, pnpm dlx, yarn dlx)
+npm install -g roomy-cli           # then: roomy   (also: bun add -g, pnpm add -g)
 ```
 
 Or build it yourself with Rust 1.88 or newer:
@@ -178,6 +178,8 @@ Without a global install, MCP clients can start it through npm:
 ```json
 { "mcpServers": { "roomy": { "command": "npx", "args": ["-y", "roomy-cli", "mcp"] } } }
 ```
+
+With Bun: `"command": "bunx", "args": ["roomy-cli", "mcp"]`.
 
 Use `roomy mcp --read-only` to leave out `roomy_clean`. Desktop apps that do not inherit your
 shell's `PATH` need the full path of the binary (`which roomy`).

@@ -55,8 +55,8 @@ Apple Silicon と Intel の両方で動く Universal バイナリです（macOS 
 公開しています（中身は同じバイナリで、インストール時のスクリプトはありません）:
 
 ```sh
-npx roomy-cli                      # インストールせずに試す
-npm install -g roomy-cli           # その後は roomy で使える
+npx roomy-cli                      # インストールせずに試す（bunx、pnpm dlx、yarn dlx でも可）
+npm install -g roomy-cli           # その後は roomy で使える（bun add -g、pnpm add -g でも可）
 ```
 
 Rust 1.88 以降で自分でビルドする場合:
@@ -125,6 +125,8 @@ args = ["mcp"]
 ```json
 { "mcpServers": { "roomy": { "command": "npx", "args": ["-y", "roomy-cli", "mcp"] } } }
 ```
+
+Bun の場合: `"command": "bunx", "args": ["roomy-cli", "mcp"]`。
 
 `roomy mcp --read-only` で削除ツールを除けます。シェルの `PATH` を引き継がないデスクトップアプリでは
 バイナリのフルパス（`which roomy`）を指定してください。

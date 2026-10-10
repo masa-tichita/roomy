@@ -6,10 +6,13 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-11
+
 ### Added
 
-- npm package `roomy-cli` (`npx roomy-cli`, `npx -y roomy-cli mcp`): the universal binary, no
-  install scripts, published with npm trusted publishing and provenance.
+- npm package `roomy-cli`: `npx roomy-cli`, `bunx roomy-cli`, `pnpm dlx roomy-cli`, and MCP
+  clients via `npx -y roomy-cli mcp`. It ships the universal binary itself (no install scripts,
+  no downloads) and is published with npm trusted publishing and provenance.
 
 ### Changed
 
@@ -17,6 +20,9 @@ All notable changes are documented here. The format follows
   are installed: roomy reads the device files itself and asks `xcrun simctl` only when a
   simulator may be unavailable. Asking took 42 s on a GitHub macOS runner with 17 Xcode
   versions (#2).
+- Releases go through a draft and are published only when every asset is attached; the Homebrew
+  formula is pushed with a repository-scoped deploy key; the toolchain and every GitHub Action
+  are pinned, and workflows are checked with zizmor.
 
 ## [0.1.0] - 2026-10-10
 
@@ -71,5 +77,6 @@ First release.
   on GitHub Releases and the Homebrew tap (`brew install masa-tichita/tap/roomy`), including shell
   completions and manual pages.
 
-[Unreleased]: https://github.com/masa-tichita/roomy/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/masa-tichita/roomy/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/masa-tichita/roomy/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/masa-tichita/roomy/releases/tag/v0.1.0
