@@ -1,0 +1,70 @@
+name: Homebrew
+
+# Publishes the formula for a release to masa-tichita/homebrew-tap, then installs it from the
+# tap and runs `brew test`. Called by release.yml; run it by hand to redo a release's formula:
+#   gh workflow run homebrew.yml -f tag=v0.1.0
+on:
+  workflow_call:
+    inputs:
+      tag:
+        type: string
+        required: true
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag, e.g. v0.1.0
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  formula:
+    name: update the tap and install from it
+    runs-on: macos-latest
+    env:
+      TAG: ${{ inputs.tag }}
+      TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Check the tap token
+        run: |
+          if [ -z "$TAP_TOKEN" ]; then
+            echo "::error::secret HOMEBREW_TAP_TOKEN is missing or empty (see RELEASING.md)"
+            exit 1
+          fi
+
+      - name: Render the formula from the release's checksum
+        run: |
+          set -euo pipefail
+          gh release download "$TAG" --pattern '*.sha256' --dir release
+          sha=$(cut -d' ' -f1 release/*.sha256)
+          ruby -e '
+            t = File.read(ARGV[0]); c = File.read(ARGV[1])
+            print t.gsub("@VERSION@", ARGV[2]).gsub("@SHA256@", ARGV[3]).sub("@COMPLETIONS@\n", c)
+          ' packaging/homebrew/roomy.rb.in packaging/homebrew/completions.rb "${TAG#v}" "$sha" > roomy.rb
+          ruby -c roomy.rb
+
+      - name: Push it to masa-tichita/homebrew-tap
+        run: |
+          git clone "https://x-access-token:${TAP_TOKEN}@github.com/masa-tichita/homebrew-tap.git" tap
+          mkdir -p tap/Formula
+          cp roomy.rb tap/Formula/roomy.rb
+          cd tap
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Formula/roomy.rb
+          if git diff --cached --quiet; then
+            echo "formula already up to date"
+          else
+            git commit -m "roomy ${TAG#v}"
+            git push
+          fi
+
+      - name: Install from the tap and run the formula test
+        run: |
+          brew install masa-tichita/tap/roomy
+          brew test masa-tichita/tap/roomy
+          roomy --version

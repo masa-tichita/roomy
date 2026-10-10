@@ -90,39 +90,8 @@ jobs:
         run: gh release create "$GITHUB_REF_NAME" dist/*.tar.gz dist/*.sha256 --title "roomy $GITHUB_REF_NAME" --notes-file notes.md --verify-tag
 
   homebrew:
-    name: update the Homebrew tap and install from it
     needs: build
-    runs-on: macos-latest
-    env:
-      TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
-    steps:
-      - uses: actions/checkout@v7
-
-      - name: Render the formula
-        run: |
-          completions=$(cat packaging/homebrew/completions.rb)
-          sed -e "s/@VERSION@/${{ needs.build.outputs.version }}/g" \
-              -e "s/@SHA256@/${{ needs.build.outputs.sha256 }}/g" \
-              packaging/homebrew/roomy.rb.in > roomy.rb.tmp
-          awk -v c="$completions" '{ if ($0 == "@COMPLETIONS@") print c; else print }' roomy.rb.tmp > roomy.rb
-          ruby -c roomy.rb
-
-      - name: Push it to masa-tichita/homebrew-tap
-        if: env.TAP_TOKEN != ''
-        run: |
-          git clone "https://x-access-token:${TAP_TOKEN}@github.com/masa-tichita/homebrew-tap.git" tap
-          mkdir -p tap/Formula
-          cp roomy.rb tap/Formula/roomy.rb
-          cd tap
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add Formula/roomy.rb
-          git commit -m "roomy ${{ needs.build.outputs.version }}"
-          git push
-
-      - name: Install from the tap and run the formula test
-        if: env.TAP_TOKEN != ''
-        run: |
-          brew install masa-tichita/tap/roomy
-          brew test masa-tichita/tap/roomy
-          roomy --version
+    uses: ./.github/workflows/homebrew.yml
+    with:
+      tag: ${{ github.ref_name }}
+    secrets: inherit
