@@ -1,0 +1,35 @@
+---
+source: tests/e2e.rs
+expression: v
+---
+{
+  "rules": [
+    {
+      "action": "delete",
+      "builtin": false,
+      "command": [],
+      "enabled": true,
+      "id": "test.safe",
+      "paths": [
+        "~/Library/Caches/SafeApp"
+      ],
+      "safety": "safe",
+      "target": "children",
+      "title": "Safe cache"
+    },
+    {
+      "action": "delete",
+      "builtin": false,
+      "command": [],
+      "enabled": true,
+      "id": "test.review",
+      "paths": [
+        "~/Library/Caches/ReviewApp"
+      ],
+      "safety": "review",
+      "target": "children",
+      "title": "Review cache"
+    }
+  ],
+  "schema": 1
+}

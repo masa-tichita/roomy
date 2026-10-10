@@ -1,0 +1,65 @@
+---
+source: tests/e2e.rs
+expression: v
+---
+{
+  "candidates": [
+    {
+      "action": {
+        "items": 2,
+        "kind": "delete"
+      },
+      "bytes": "[int]",
+      "category": "Other",
+      "id": "test.safe",
+      "n": "[int]",
+      "notes": [],
+      "path": "~/Library/Caches/SafeApp",
+      "safety": "safe",
+      "size": "[string]",
+      "title": "Safe cache",
+      "why": []
+    },
+    {
+      "action": {
+        "items": 1,
+        "kind": "delete"
+      },
+      "bytes": "[int]",
+      "category": "Other",
+      "id": "test.review",
+      "n": "[int]",
+      "notes": [],
+      "path": "~/Library/Caches/ReviewApp",
+      "safety": "review",
+      "size": "[string]",
+      "title": "Review cache",
+      "why": []
+    }
+  ],
+  "disk": {
+    "free": "[int]",
+    "free_text": "[string]",
+    "total": "[int]"
+  },
+  "grew": [
+    {
+      "delta": "[int]",
+      "delta_text": "[string]",
+      "now": "[int]",
+      "path": "~/Projects/big"
+    }
+  ],
+  "grew_since": "[int]",
+  "left_alone": 0,
+  "reclaimable": {
+    "review": "[int]",
+    "review_text": "[string]",
+    "safe": "[int]",
+    "safe_text": "[string]"
+  },
+  "schema": 1,
+  "skipped_protected": false,
+  "time": "[int]",
+  "unreadable_folders": 0
+}

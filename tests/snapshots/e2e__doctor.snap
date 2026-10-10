@@ -1,0 +1,47 @@
+---
+source: tests/e2e.rs
+expression: v
+---
+{
+  "arch": "[string]",
+  "checks": [
+    {
+      "detail": "[string]",
+      "id": "config",
+      "level": "[ok|warn|fail]"
+    },
+    {
+      "detail": "[string]",
+      "id": "state_dir",
+      "level": "[ok|warn|fail]"
+    },
+    {
+      "detail": "[string]",
+      "id": "full_disk_access",
+      "level": "[ok|warn|fail]"
+    },
+    {
+      "detail": "[string]",
+      "id": "tools",
+      "level": "[ok|warn|fail]"
+    },
+    {
+      "detail": "[string]",
+      "id": "notifications",
+      "level": "[ok|warn|fail]"
+    },
+    {
+      "detail": "[string]",
+      "id": "service",
+      "level": "[ok|warn|fail]"
+    },
+    {
+      "detail": "[string]",
+      "id": "last_scan",
+      "level": "[ok|warn|fail]"
+    }
+  ],
+  "macos": "[string]",
+  "schema": 1,
+  "version": "[string]"
+}

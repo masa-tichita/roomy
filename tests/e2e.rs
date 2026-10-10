@@ -613,3 +613,231 @@ fn guide_formats_and_skill_install() {
         "keeps an existing skill"
     );
 }
+
+/// What the Homebrew formula runs at install time: completions for each shell and the manual
+/// pages, from the binary alone.
+#[test]
+fn completions_and_man_pages_for_packaging() {
+    let sb = Sandbox::new(BASE);
+    for (shell, needle) in [
+        ("bash", "complete -F _roomy"),
+        ("zsh", "#compdef roomy"),
+        ("fish", "complete -c roomy"),
+        ("powershell", "Register-ArgumentCompleter"),
+    ] {
+        let o = sb.roomy(&["completions", shell]);
+        assert!(o.status.success(), "{shell}");
+        let text = stdout(&o);
+        assert!(text.contains(needle), "{shell}: {text}");
+        assert!(
+            text.contains("clean") && text.contains("dry-run"),
+            "{shell}"
+        );
+        assert!(
+            !text.contains("tick") && !text.contains("Manual page"),
+            "{shell}: hidden commands are not offered"
+        );
+    }
+    assert_eq!(sb.roomy(&["completions", "tcsh"]).status.code(), Some(2));
+
+    let page = stdout(&sb.roomy(&["man"]));
+    assert!(page.contains(".TH roomy 1"), "{page}");
+    assert!(page.contains("roomy\\-clean(1)"), "{page}");
+    assert!(
+        !page.contains("roomy\\-tick(1)"),
+        "hidden commands get no page"
+    );
+
+    let dir = sb.home.join("man/man1");
+    assert!(
+        sb.roomy(&["man", "--dir", dir.to_str().unwrap()])
+            .status
+            .success()
+    );
+    for page in ["roomy.1", "roomy-clean.1", "roomy-service-install.1"] {
+        assert!(dir.join(page).is_file(), "{page}");
+    }
+    assert!(!dir.join("roomy-tick.1").exists());
+    assert!(
+        !sb.home.join("Library").exists(),
+        "generating writes no state"
+    );
+}
+
+// ---- the JSON contract ----
+//
+// Agents depend on these shapes, so they are pinned with snapshots in `tests/snapshots/`.
+// Whatever depends on the machine or the moment (times, sizes, free space, memory, the macOS
+// version, installed tools, running apps) is redacted to a placeholder naming its type, so the
+// snapshots hold field names, types, nesting and fixed vocabularies, and are the same on any Mac.
+// After an intended change: `cargo insta review` (and bump `schema` if it breaks consumers).
+
+use insta::internals::{Content, ContentPath, Redaction};
+
+/// A value replaced by its type: `[int]`, `[float]`, `[string]`, `[bool]`; null stays null.
+fn typed() -> Redaction {
+    insta::dynamic_redaction(|v: Content, p: ContentPath| {
+        let ty = if v.is_nil() {
+            return v;
+        } else if v.as_i64().is_some() || v.as_u64().is_some() {
+            "[int]"
+        } else if v.as_f64().is_some() {
+            "[float]"
+        } else if v.as_str().is_some() {
+            "[string]"
+        } else if v.as_bool().is_some() {
+            "[bool]"
+        } else {
+            panic!("{p}: not a scalar: {v:?}")
+        };
+        ty.into()
+    })
+}
+
+/// A value from a fixed vocabulary that varies by machine: checked, then replaced by the list.
+fn one_of(allowed: &'static [&'static str]) -> Redaction {
+    insta::dynamic_redaction(move |v: Content, p: ContentPath| {
+        let s = v.as_str().unwrap_or_default();
+        assert!(allowed.contains(&s), "{p}: {s:?} is not one of {allowed:?}");
+        format!("[{}]", allowed.join("|"))
+    })
+}
+
+fn keys_of(v: &Content) -> Vec<String> {
+    match v.resolve_inner() {
+        Content::Map(m) => m
+            .iter()
+            .filter_map(|(k, _)| k.as_str().map(str::to_string))
+            .collect(),
+        other => panic!("not an object: {other:?}"),
+    }
+}
+
+/// A list whose length varies by machine: every item has the same keys; replaced by them.
+fn list_of_objects() -> Redaction {
+    insta::dynamic_redaction(|v: Content, p: ContentPath| {
+        let items = v.as_slice().unwrap_or_else(|| panic!("{p}: not a list"));
+        let keys: Vec<Vec<String>> = items.iter().map(keys_of).collect();
+        assert!(!keys.is_empty(), "{p}: empty");
+        assert!(keys.windows(2).all(|w| w[0] == w[1]), "{p}: {keys:?}");
+        format!("[list of {{{}}}]", keys[0].join(", "))
+    })
+}
+
+/// Keys whose values are volatile wherever they appear.
+const VOLATILE: &str = ".**.time, .**.scanned, .**.grew_since, .**.bytes, .**.size, .**.total, \
+    .**.free, .**.free_text, .**.free_pct, .**.swap_used, .**.safe, .**.safe_text, .**.review, \
+    .**.review_text, .**.total_bytes, .**.total_text, .**.freed_bytes, .**.freed_text, \
+    .**.safe_bytes, .**.review_bytes, .**.delta, .**.delta_text, .**.now, .**.n, .**.version";
+
+fn snapshot(name: &str, v: &serde_json::Value) {
+    let mut s = insta::Settings::clone_current();
+    s.add_redaction(VOLATILE, typed());
+    s.add_redaction(
+        ".memory.pressure",
+        one_of(&["normal", "warning", "critical", "unknown"]),
+    );
+    s.add_redaction(
+        ".alarming, .last_scan.candidates, .macos, .arch, .checks[].detail",
+        typed(),
+    );
+    s.add_redaction(".top_apps", list_of_objects());
+    s.add_redaction(".checks[].level", one_of(&["ok", "warn", "fail"]));
+    s.bind(|| insta::assert_json_snapshot!(name, v));
+}
+
+impl Sandbox {
+    /// `--json` output, with the sandbox's home written as `[HOME]`.
+    fn contract(&self, args: &[&str]) -> serde_json::Value {
+        let o = self.roomy(args);
+        assert!(
+            o.status.success(),
+            "{args:?}: {}{}",
+            stdout(&o),
+            String::from_utf8_lossy(&o.stderr)
+        );
+        self.scrub(&json(&o))
+    }
+
+    fn scrub(&self, v: &serde_json::Value) -> serde_json::Value {
+        let text = v.to_string().replace(self.home.to_str().unwrap(), "[HOME]");
+        serde_json::from_str(&text).unwrap()
+    }
+}
+
+/// Only this test's candidates: the machine's own Docker or Xcode data can add others.
+fn test_candidates(mut v: serde_json::Value) -> serde_json::Value {
+    v["candidates"]
+        .as_array_mut()
+        .unwrap()
+        .retain(|c| c["id"].as_str().unwrap().starts_with("test."));
+    v
+}
+
+#[test]
+fn json_contract_snapshots() {
+    let config = format!("{BASE}{TWO_RULES}")
+        .replace("[scan]\n", "[scan]\nsnapshot_min_mb = 0\n")
+        .replace("[thresholds]\n", "[thresholds]\ngrowth_gb = 0.001\n");
+    let sb = Sandbox::new(&config);
+    sb.file("Library/Caches/SafeApp/a", 100_000);
+    sb.file("Library/Caches/SafeApp/b", 100_000);
+    sb.file("Library/Caches/ReviewApp/x", 100_000);
+    assert!(sb.roomy(&["scan"]).status.success());
+    // a second scan, so that `grew` and `delta` have values
+    sb.file("Projects/big/blob", 3_000_000);
+    assert!(sb.roomy(&["scan"]).status.success());
+
+    let report = test_candidates(sb.contract(&["report", "--json"]));
+    assert!(!report["grew"].as_array().unwrap().is_empty(), "{report}");
+    snapshot("report_summary", &report);
+    snapshot(
+        "explain",
+        &sb.contract(&["explain", "test.safe", "--json", "--max-paths", "1"]),
+    );
+    snapshot(
+        "clean_plan",
+        &sb.contract(&["clean", "test.safe", "test.review", "--json"]),
+    );
+    snapshot("status", &sb.contract(&["status", "--json"]));
+    snapshot("top", &sb.contract(&["top", "--json", "-n", "3"]));
+
+    // Built-in rules come and go; each entry must have the same fields as the user's.
+    let mut rules = sb.contract(&["rules", "--json"]);
+    let list = rules["rules"].as_array_mut().unwrap();
+    let keys = |r: &serde_json::Value| r.as_object().unwrap().keys().cloned().collect::<Vec<_>>();
+    assert!(list.iter().any(|r| r["builtin"] == true));
+    assert!(list.iter().all(|r| keys(r) == keys(&list[0])));
+    list.retain(|r| r["builtin"] == false);
+    snapshot("rules", &rules);
+
+    // The exit code says whether a check failed, which depends on the machine.
+    snapshot("doctor", &sb.scrub(&json(&sb.roomy(&["doctor", "--json"]))));
+
+    let replies = mcp(
+        &sb,
+        &["mcp"],
+        &[
+            r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"test","version":"1"}}}"#,
+            r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#,
+            r#"{"jsonrpc":"2.0","id":2,"method":"tools/list"}"#,
+            r#"{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"roomy_explain","arguments":{"id":"test.safe","max_paths":1}}}"#,
+        ],
+    );
+    snapshot("mcp_initialize", &replies[0]);
+    insta::assert_json_snapshot!("mcp_tools_list", &replies[1]); // nothing volatile
+    let mut call = sb.scrub(&replies[2]);
+    let text = call["result"]["content"][0]["text"].take();
+    let text: serde_json::Value = serde_json::from_str(text.as_str().unwrap()).unwrap();
+    assert_eq!(
+        text, call["result"]["structuredContent"],
+        "the text content is the structured content"
+    );
+    call["result"]["content"][0]["text"] = "[structuredContent as JSON]".into();
+    snapshot("mcp_tools_call", &call);
+
+    snapshot(
+        "clean_result",
+        &sb.contract(&["clean", "test.safe", "--json", "--yes"]),
+    );
+}

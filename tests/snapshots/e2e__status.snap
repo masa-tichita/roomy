@@ -1,0 +1,27 @@
+---
+source: tests/e2e.rs
+expression: v
+---
+{
+  "alarming": "[bool]",
+  "disk": {
+    "free": "[int]",
+    "free_text": "[string]",
+    "low": false,
+    "total": "[int]"
+  },
+  "last_scan": {
+    "candidates": "[int]",
+    "review_bytes": "[int]",
+    "safe_bytes": "[int]",
+    "time": "[int]"
+  },
+  "memory": {
+    "free_pct": "[int]",
+    "pressure": "[normal|warning|critical|unknown]",
+    "swap_used": "[int]",
+    "total": "[int]"
+  },
+  "schema": 1,
+  "top_apps": "[list of {name, processes, rss}]"
+}

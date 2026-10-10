@@ -19,7 +19,8 @@ mod tick;
 mod tui;
 mod walk;
 
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory, Parser, Subcommand};
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 #[derive(Parser)]
@@ -165,6 +166,16 @@ enum Cmd {
         #[arg(long)]
         json: bool,
     },
+    /// Shell completion script on stdout, e.g. `roomy completions zsh > _roomy`
+    #[command(hide = true)]
+    Completions { shell: clap_complete::Shell },
+    /// Manual page (roff) on stdout, or one page per command into a folder
+    #[command(hide = true)]
+    Man {
+        /// Write roomy.1 and roomy-<command>.1 into this folder instead
+        #[arg(long, value_name = "DIR")]
+        dir: Option<PathBuf>,
+    },
 }
 
 impl Cmd {
@@ -240,7 +251,11 @@ fn main() -> ExitCode {
     if let Some(e) = &loaded.error
         && !matches!(
             cmd,
-            Cmd::Config { .. } | Cmd::Doctor { .. } | Cmd::Ui { .. }
+            Cmd::Config { .. }
+                | Cmd::Doctor { .. }
+                | Cmd::Ui { .. }
+                | Cmd::Completions { .. }
+                | Cmd::Man { .. }
         )
     {
         eprintln!(
@@ -488,5 +503,47 @@ fn run(cmd: Cmd, cfg: &config::Config) -> anyhow::Result<u8> {
             output::rules(cfg, json);
             Ok(0)
         }
+        Cmd::Completions { shell } => {
+            completions(shell);
+            Ok(0)
+        }
+        Cmd::Man { dir } => {
+            man(dir.as_deref())?;
+            Ok(0)
+        }
+    }
+}
+
+/// Completions and manual pages come from the command definitions alone, so packaging (the
+/// Homebrew formula) can generate them at install time.
+fn completions(shell: clap_complete::Shell) {
+    // clap_complete would also offer hidden commands (`tick`, `completions`, `man`).
+    let full = Cli::command();
+    let mut cmd = clap::Command::new(app::NAME)
+        .version(app::VERSION)
+        .args(full.get_arguments().cloned())
+        .subcommands(full.get_subcommands().filter(|s| !s.is_hide_set()).cloned());
+    clap_complete::generate(shell, &mut cmd, app::NAME, &mut std::io::stdout());
+}
+
+/// `roomy.1` on stdout, or with `dir`, `roomy.1` and `roomy-<command>.1` for every visible
+/// command (the pages `roomy.1` refers to) into that folder.
+fn man(dir: Option<&Path>) -> std::io::Result<()> {
+    match dir {
+        Some(dir) => {
+            std::fs::create_dir_all(dir)?;
+            clap_mangen::generate_to(Cli::command(), dir)
+        }
+        None => clap_mangen::Man::new(Cli::command()).render(&mut std::io::stdout()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn command_definitions_are_consistent() {
+        Cli::command().debug_assert();
     }
 }

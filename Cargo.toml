@@ -15,6 +15,8 @@ exclude = [".github/", "docs/research/"]
 anyhow = "1"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 clap = { version = "4.5", features = ["derive"] }
+clap_complete = "4.6"
+clap_mangen = "0.3"
 libc = "0.2"
 objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSString", "NSURL", "NSFileManager", "NSError"] }
 ratatui = { version = "0.30", default-features = false, features = ["crossterm", "layout-cache"] }
@@ -25,6 +27,7 @@ toml = "0.8"
 unicode-width = "0.2"
 
 [dev-dependencies]
+insta = { version = "1.49", features = ["json", "redactions"] }
 tempfile = "3"
 
 [profile.release]

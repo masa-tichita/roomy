@@ -1,0 +1,27 @@
+---
+source: tests/e2e.rs
+expression: v
+---
+{
+  "action": {
+    "items": 2,
+    "kind": "delete"
+  },
+  "bytes": "[int]",
+  "category": "Other",
+  "describe": "delete 2 items",
+  "id": "test.safe",
+  "n": "[int]",
+  "notes": [],
+  "path": "~/Library/Caches/SafeApp",
+  "paths": [
+    "~/Library/Caches/SafeApp/a"
+  ],
+  "paths_total": 2,
+  "safety": "safe",
+  "scanned": "[int]",
+  "schema": 1,
+  "size": "[string]",
+  "title": "Safe cache",
+  "why": []
+}

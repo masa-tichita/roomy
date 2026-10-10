@@ -1,0 +1,200 @@
+---
+source: tests/e2e.rs
+expression: "&replies[1]"
+---
+{
+  "id": 2,
+  "jsonrpc": "2.0",
+  "result": {
+    "tools": [
+      {
+        "annotations": {
+          "destructiveHint": false,
+          "idempotentHint": true,
+          "openWorldHint": false,
+          "readOnlyHint": true
+        },
+        "description": "Free disk space, memory pressure, swap, top memory users and a summary of the last scan.",
+        "inputSchema": {
+          "properties": {},
+          "type": "object"
+        },
+        "name": "roomy_status",
+        "title": "Status"
+      },
+      {
+        "annotations": {
+          "destructiveHint": false,
+          "idempotentHint": true,
+          "openWorldHint": false,
+          "readOnlyHint": true
+        },
+        "description": "The last scan's removal candidates (id, size, safety, reasons, action) and folders that grew. Instant.",
+        "inputSchema": {
+          "properties": {},
+          "type": "object"
+        },
+        "name": "roomy_report",
+        "title": "Last report"
+      },
+      {
+        "annotations": {
+          "destructiveHint": false,
+          "idempotentHint": false,
+          "openWorldHint": false,
+          "readOnlyHint": false
+        },
+        "description": "Walk the disk now (about 30 seconds) and return a fresh report. Use when the report is old or missing.",
+        "inputSchema": {
+          "properties": {},
+          "type": "object"
+        },
+        "name": "roomy_scan",
+        "title": "Scan"
+      },
+      {
+        "annotations": {
+          "destructiveHint": false,
+          "idempotentHint": true,
+          "openWorldHint": false,
+          "readOnlyHint": true
+        },
+        "description": "Details of one candidate: the paths it would remove, the command it would run, caveats.",
+        "inputSchema": {
+          "properties": {
+            "id": {
+              "description": "Candidate id or number",
+              "type": "string"
+            },
+            "max_paths": {
+              "description": "How many paths to list (default 20)",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id"
+          ],
+          "type": "object"
+        },
+        "name": "roomy_explain",
+        "title": "Explain candidate"
+      },
+      {
+        "annotations": {
+          "destructiveHint": false,
+          "idempotentHint": true,
+          "openWorldHint": false,
+          "readOnlyHint": true
+        },
+        "description": "Largest folders inside a folder, from the last scan (no disk walk), with growth since the scan before.",
+        "inputSchema": {
+          "properties": {
+            "n": {
+              "description": "How many (default 15)",
+              "type": "integer"
+            },
+            "path": {
+              "description": "Folder, e.g. ~/Library (default: home)",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "name": "roomy_top",
+        "title": "Largest folders"
+      },
+      {
+        "annotations": {
+          "destructiveHint": false,
+          "idempotentHint": true,
+          "openWorldHint": false,
+          "readOnlyHint": true
+        },
+        "description": "Lowest free space per day for the last 14 days.",
+        "inputSchema": {
+          "properties": {},
+          "type": "object"
+        },
+        "name": "roomy_history",
+        "title": "Free space history"
+      },
+      {
+        "annotations": {
+          "destructiveHint": false,
+          "idempotentHint": true,
+          "openWorldHint": false,
+          "readOnlyHint": true
+        },
+        "description": "Permissions, available tools, background service and configuration checks.",
+        "inputSchema": {
+          "properties": {},
+          "type": "object"
+        },
+        "name": "roomy_doctor",
+        "title": "Doctor"
+      },
+      {
+        "annotations": {
+          "destructiveHint": false,
+          "idempotentHint": true,
+          "openWorldHint": false,
+          "readOnlyHint": true
+        },
+        "description": "Re-check candidates and show exactly what roomy_clean would do, and what it would refuse. Removes nothing.",
+        "inputSchema": {
+          "properties": {
+            "all_safe": {
+              "description": "Also every candidate marked safe",
+              "type": "boolean"
+            },
+            "allow_review": {
+              "description": "Include 'review' candidates. Only after the user explicitly approved them.",
+              "type": "boolean"
+            },
+            "ids": {
+              "description": "Candidate ids (or numbers) from roomy_report",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "type": "object"
+        },
+        "name": "roomy_plan_clean",
+        "title": "Plan removal"
+      },
+      {
+        "annotations": {
+          "destructiveHint": true,
+          "idempotentHint": false,
+          "openWorldHint": false,
+          "readOnlyHint": false
+        },
+        "description": "Remove candidates after re-checking each one. Call only after the user approved this exact list. Logged to the audit log.",
+        "inputSchema": {
+          "properties": {
+            "all_safe": {
+              "description": "Also every candidate marked safe",
+              "type": "boolean"
+            },
+            "allow_review": {
+              "description": "Include 'review' candidates. Only after the user explicitly approved them.",
+              "type": "boolean"
+            },
+            "ids": {
+              "description": "Candidate ids (or numbers) from roomy_report",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "type": "object"
+        },
+        "name": "roomy_clean",
+        "title": "Remove candidates"
+      }
+    ]
+  }
+}

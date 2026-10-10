@@ -1,0 +1,30 @@
+---
+source: tests/e2e.rs
+expression: v
+---
+{
+  "bytes": "[int]",
+  "folders": [
+    {
+      "bytes": "[int]",
+      "delta": null,
+      "path": "~/Projects",
+      "size": "[string]"
+    },
+    {
+      "bytes": "[int]",
+      "delta": "[int]",
+      "path": "~/Library",
+      "size": "[string]"
+    },
+    {
+      "bytes": "[int]",
+      "delta": "[int]",
+      "path": "~/.config",
+      "size": "[string]"
+    }
+  ],
+  "path": "~",
+  "schema": 1,
+  "time": "[int]"
+}

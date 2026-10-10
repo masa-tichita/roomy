@@ -1,0 +1,35 @@
+---
+source: tests/e2e.rs
+expression: v
+---
+{
+  "dry_run": true,
+  "plan": [
+    {
+      "action": {
+        "items": 2,
+        "kind": "delete"
+      },
+      "bytes": "[int]",
+      "category": "Other",
+      "id": "test.safe",
+      "n": "[int]",
+      "notes": [],
+      "path": "~/Library/Caches/SafeApp",
+      "safety": "safe",
+      "size": "[string]",
+      "title": "Safe cache",
+      "why": []
+    }
+  ],
+  "refused": [
+    {
+      "id": "test.review",
+      "reason": "needs a person to look first (review); pass --allow-review to include it",
+      "title": "Review cache"
+    }
+  ],
+  "schema": 1,
+  "total_bytes": "[int]",
+  "total_text": "[string]"
+}

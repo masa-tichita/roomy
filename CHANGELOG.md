@@ -37,6 +37,7 @@ All notable changes are documented here. The format follows
   `roomy guide` (agent instructions, Claude Code skill, AGENTS.md snippet) and an MCP server
   (`roomy mcp`).
 - `disabled_detectors` turns off built-in detectors (for example `["docker"]`).
+- Shell completions (`roomy completions <shell>`) and manual pages (`roomy man`), for packaging.
 
 ### Fixed
 

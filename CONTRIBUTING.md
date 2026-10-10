@@ -16,6 +16,22 @@ folder, so they never touch your files. New behavior that removes anything needs
 
 To see the dashboard without a terminal: `cargo run -- ui --print 120x36`.
 
+## The JSON contract
+
+Agents rely on `--json` and the MCP tools, so their shape is pinned by snapshot tests
+(`json_contract_snapshots` in `tests/e2e.rs`, files in `tests/snapshots/`). Times, sizes and
+anything that differs between Macs are redacted, so a snapshot changes only when a field is
+added, removed, renamed or changes type or vocabulary. When you change the output on purpose:
+
+```sh
+cargo install cargo-insta   # once
+cargo insta test --review   # or: cargo test, then cargo insta review
+```
+
+Commit the updated `.snap` files with the change. Adding a field is fine within a schema
+version. Removing or renaming a field, or changing its type or meaning, is a breaking change:
+bump `SCHEMA` in `src/app.rs`, and note it under *Breaking* in the changelog.
+
 ## Commit messages
 
 [Conventional Commits](https://www.conventionalcommits.org/): `feat:`, `fix:`, `docs:`,

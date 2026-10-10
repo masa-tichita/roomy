@@ -66,6 +66,13 @@ cargo install --git https://github.com/masa-tichita/roomy
 
 Homebrew and prebuilt universal binaries are planned for v0.2.
 
+Shell completions and manual pages (the Homebrew formula will install them for you):
+
+```sh
+roomy completions zsh > ~/.zfunc/_roomy     # also bash, fish, elvish, powershell
+roomy man --dir ~/.local/share/man/man1     # roomy.1 and one page per command
+```
+
 ## Quick start
 
 ```sh

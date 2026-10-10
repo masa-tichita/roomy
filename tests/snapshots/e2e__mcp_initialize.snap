@@ -1,0 +1,22 @@
+---
+source: tests/e2e.rs
+expression: v
+---
+{
+  "id": 1,
+  "jsonrpc": "2.0",
+  "result": {
+    "capabilities": {
+      "tools": {
+        "listChanged": false
+      }
+    },
+    "instructions": "roomy finds what is safe to delete on this Mac and removes it with safety checks. Start with roomy_status or roomy_report (roomy_scan if the report is old), explain candidates to the user with their `why` and `notes`, call roomy_plan_clean, and call roomy_clean only after the user approves. Never delete files any other way. Candidates with safety \"review\" need the user's explicit approval and allow_review=true.",
+    "protocolVersion": "2025-06-18",
+    "serverInfo": {
+      "name": "roomy",
+      "title": "roomy",
+      "version": "[string]"
+    }
+  }
+}

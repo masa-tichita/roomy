@@ -48,6 +48,13 @@ cargo install --git https://github.com/masa-tichita/roomy
 
 Homebrew と Universal バイナリの配布は v0.2 で予定しています。
 
+シェル補完と man ページ（Homebrew の formula では自動で入ります）:
+
+```sh
+roomy completions zsh > ~/.zfunc/_roomy     # bash, fish, elvish, powershell も可
+roomy man --dir ~/.local/share/man/man1     # roomy.1 とコマンドごとのページ
+```
+
 ## 使い方
 
 ```sh

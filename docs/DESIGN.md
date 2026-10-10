@@ -45,6 +45,7 @@
 | `guide` | AI エージェント向けの手順。Claude Code のスキルや AGENTS.md 用の文面としても出力 |
 | `mcp` | MCP サーバー（stdio）。CLI の `--json` と同じ結果をツールとして提供（§14） |
 | `tick` | launchd から定期実行される入口（非公開）。軽いチェック＋必要なら日次スキャン（§6） |
+| `completions <shell>` / `man` | シェル補完と man ページを出力（非公開。Homebrew の formula がインストール時に呼ぶ） |
 | `service install / uninstall / status` | LaunchAgent の登録・解除・状態 |
 | `doctor` | 権限（FDA）、使える外部ツール、サービス状態、設定の妥当性、通知手段を診断 |
 | `config path / show / init / validate` | 設定ファイル |

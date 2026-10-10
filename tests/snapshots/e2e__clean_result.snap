@@ -1,0 +1,20 @@
+---
+source: tests/e2e.rs
+expression: v
+---
+{
+  "dry_run": false,
+  "freed_bytes": "[int]",
+  "freed_text": "[string]",
+  "moved_to_trash": false,
+  "refused": [],
+  "results": [
+    {
+      "error": null,
+      "id": "test.safe",
+      "ok": true,
+      "title": "Safe cache"
+    }
+  ],
+  "schema": 1
+}
