@@ -1,5 +1,7 @@
 # roomy
 
+**English** | [日本語](README.ja.md)
+
 **Your Mac's tidy roommate that keeps it roomy.**
 
 roomy watches storage and memory on your Mac, warns you *before* they run out, and tells you
@@ -7,7 +9,9 @@ what is safe to delete — with the evidence for each decision. It understands w
 Macs actually fill up: git worktrees, Xcode simulators, package caches, old tool versions,
 editor extensions, Docker, and AI models.
 
-[日本語の README はこちら](README.ja.md)
+**Built for AI agents as much as for people.** Claude Code, Codex and other agents call roomy
+(CLI or MCP) instead of improvising with `du` and `rm`: they get a compact, deterministic report,
+explain it to you, and remove only what you approve — through the same safety checks.
 
 ```
 ╭ roomy  Mac health report ──────────── Overview │ Folders ──────────── scanned 2026-10-10 15:48 ╮
@@ -33,7 +37,7 @@ editor extensions, Docker, and AI models.
   touched 12 days ago", "keeps the newest 2 versions", "marked obsolete by the editor".
 - **Finds what grew.** One fast parallel walk records the size of every large folder; the next
   scan shows which ones grew, pointing at the folder that caused it rather than its parents.
-- **Warns early.** A small background agent checks every 15 minutes and notifies you when free
+- **Warns early.** A small background service checks every 15 minutes and notifies you when free
   space is low or drops suddenly, or when memory pressure or swap get high.
 
 ## Safety promises
@@ -117,10 +121,47 @@ action = "trash"
 
 `roomy rules` lists every rule; `roomy config validate` catches typos.
 
-## For scripts and agents
+## Use it from AI agents
 
-`status`, `scan`, `report`, `top`, `history`, `rules` and `doctor` accept `--json`. Every JSON
-document is an object with `"schema": 1`; text fields are always English. Fields may be added
+Agents get the same results as you, in a few kilobytes of JSON instead of pages of `du` output,
+and they cannot delete anything roomy would not.
+
+**MCP** (tools: `roomy_status`, `roomy_report`, `roomy_scan`, `roomy_explain`, `roomy_top`,
+`roomy_history`, `roomy_doctor`, `roomy_plan_clean`, `roomy_clean`):
+
+```sh
+claude mcp add --scope user roomy -- roomy mcp          # Claude Code
+```
+
+```toml
+# Codex: ~/.codex/config.toml
+[mcp_servers.roomy]
+command = "roomy"
+args = ["mcp"]
+```
+
+Use `roomy mcp --read-only` to leave out `roomy_clean`. Desktop apps that do not inherit your
+shell's `PATH` need the full path of the binary (`which roomy`).
+
+**CLI + instructions** (works with any agent that can run commands):
+
+```sh
+roomy guide --install-claude-skill     # Claude Code skill in ~/.claude/skills/roomy
+roomy guide --format agents-md         # paste into AGENTS.md / CLAUDE.md
+roomy guide                            # the workflow agents follow
+```
+
+The workflow: `report --json` → `explain <id> --json` → propose to the user →
+`clean <id> --json` (a dry run) → after approval `clean <id> --json --yes`.
+
+**Guard rails for unattended use.** With `--yes`, `--json` or over MCP, candidates marked
+*review* need `--allow-review` (`allow_review`), and one run removes at most
+`[clean] max_unattended_gb` (50 GB by default). Every removal is logged with `"unattended": true`.
+
+**Output contract.** `status`, `scan`, `report`, `explain`, `clean`, `top`, `history`, `rules` and
+`doctor` take `--json`. Every document is an object with `"schema": 1`; text is always English;
+errors are `{"schema": 1, "error": "…"}`. JSON is compact when piped and indented at a terminal.
+`report --json` is a summary (no path lists); `--full` gives everything. Fields may be added
 within a schema version; anything else bumps it.
 
 | Exit code | Meaning |

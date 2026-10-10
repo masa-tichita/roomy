@@ -1,5 +1,7 @@
 # roomy
 
+[English](README.md) | **日本語**
+
 **Mac をいつも広々と保つ、きれい好きなルームメイト。**
 
 roomy は Mac のストレージとメモリを見張り、足りなくなる**前に**知らせ、何を消せば安全かを
@@ -7,7 +9,9 @@ roomy は Mac のストレージとメモリを見張り、足りなくなる**�
 シミュレータ、パッケージのキャッシュ、ツールの旧バージョン、エディタの拡張機能、Docker、
 AI モデル — を理解しています。
 
-[English README](README.md)
+**人と同じくらい AI エージェントのために作られています。** Claude Code や Codex などのエージェントは、
+`du` や `rm` を即興で使う代わりに roomy（CLI または MCP）を呼びます。小さく決まった形のレポートを受け取り、
+あなたに説明し、承認されたものだけを同じ安全装置を通して削除します。
 
 ## roomy の特徴
 
@@ -72,10 +76,47 @@ roomy doctor               # 権限・ツール・エージェント・設定の
 例は [README.md](README.md#configuration) を参照してください。`roomy rules` でルール一覧、
 `roomy config validate` で打ち間違いを確認できます。
 
-## スクリプトやエージェントから使う
+## AI エージェントから使う
 
-`status`・`scan`・`report`・`top`・`history`・`rules`・`doctor` は `--json` に対応しています。
-JSON は常に `"schema": 1` を含むオブジェクトで、文字列は常に英語です。
+エージェントは、何ページもの `du` の出力ではなく数 KB の JSON で同じ結果を受け取り、roomy が
+消さないものは消せません。
+
+**MCP**（ツール: `roomy_status`、`roomy_report`、`roomy_scan`、`roomy_explain`、`roomy_top`、
+`roomy_history`、`roomy_doctor`、`roomy_plan_clean`、`roomy_clean`）:
+
+```sh
+claude mcp add --scope user roomy -- roomy mcp          # Claude Code
+```
+
+```toml
+# Codex: ~/.codex/config.toml
+[mcp_servers.roomy]
+command = "roomy"
+args = ["mcp"]
+```
+
+`roomy mcp --read-only` で削除ツールを除けます。シェルの `PATH` を引き継がないデスクトップアプリでは
+バイナリのフルパス（`which roomy`）を指定してください。
+
+**CLI ＋ 説明書**（コマンドを実行できるエージェントなら何でも）:
+
+```sh
+roomy guide --install-claude-skill     # Claude Code のスキルを ~/.claude/skills/roomy に
+roomy guide --format agents-md         # AGENTS.md / CLAUDE.md に貼る文面
+roomy guide                            # エージェントが従う手順
+```
+
+手順: `report --json` → `explain <id> --json` → ユーザーに提案 → `clean <id> --json`（ドライラン）
+→ 承認後に `clean <id> --json --yes`。
+
+**無人実行の歯止め。** `--yes`・`--json`・MCP では、「要確認」の候補は `--allow-review`（`allow_review`）
+が必要で、1 回に消せる量は `[clean] max_unattended_gb`（既定 50 GB）までです。削除は
+`"unattended": true` 付きで記録されます。
+
+**出力の約束。** `status`・`scan`・`report`・`explain`・`clean`・`top`・`history`・`rules`・`doctor`
+は `--json` に対応。JSON は常に `"schema": 1` を含み、文字列は英語、エラーは
+`{"schema": 1, "error": "…"}` です。パイプ先には詰めて、ターミナルには整形して出力します。
+`report --json` は要約（パス一覧なし）で、`--full` で全項目を出します。
 
 | 終了コード | 意味 |
 |---|---|

@@ -131,7 +131,7 @@ fn checks() -> Vec<Check> {
         Msg::plain(sys::notifier()),
     ));
 
-    let own = crate::service::is_loaded(app::AGENT_LABEL);
+    let own = crate::service::is_loaded(app::SERVICE_LABEL);
     let brew = crate::service::brew_loaded();
     let (level, detail) = match (own, brew) {
         (true, true) => (Level::Fail, m("service.both")),
@@ -139,9 +139,9 @@ fn checks() -> Vec<Check> {
         (true, false) => (Level::Ok, m("service.running_own")),
         (false, true) => (Level::Ok, m("service.running_brew")),
     };
-    v.push(check("agent", "doctor.agent", level, detail));
+    v.push(check("service", "doctor.agent", level, detail));
 
-    let samples = state::read_lines::<crate::agent::Sample>(&state::history_path());
+    let samples = state::read_lines::<crate::tick::Sample>(&state::history_path());
     if let Some(t0) = samples.last().map(|x| x.t) {
         v.push(check(
             "last_agent_run",
@@ -167,24 +167,33 @@ fn checks() -> Vec<Check> {
     v
 }
 
-/// Returns the number of failures.
-pub fn run(json: bool) -> usize {
+/// Checks as JSON (English), and the number of failures.
+pub fn json() -> (serde_json::Value, usize) {
     let checks = checks();
     let failures = checks.iter().filter(|c| c.level == Level::Fail).count();
+    let list: Vec<serde_json::Value> = checks
+        .iter()
+        .map(|c| serde_json::json!({ "id": c.id, "level": c.level, "detail": c.detail.render_in(Lang::En) }))
+        .collect();
+    let v = serde_json::json!({
+        "schema": app::SCHEMA,
+        "version": app::VERSION,
+        "macos": sys::os_version(),
+        "arch": std::env::consts::ARCH,
+        "checks": list,
+    });
+    (v, failures)
+}
+
+/// Returns the number of failures.
+pub fn run(json: bool) -> usize {
     if json {
-        let list: Vec<serde_json::Value> = checks
-            .iter()
-            .map(|c| serde_json::json!({ "id": c.id, "level": c.level, "detail": c.detail.render_in(Lang::En) }))
-            .collect();
-        print_json(&serde_json::json!({
-            "schema": app::SCHEMA,
-            "version": app::VERSION,
-            "macos": sys::os_version(),
-            "arch": std::env::consts::ARCH,
-            "checks": list,
-        }));
+        let (v, failures) = self::json();
+        print_json(&v);
         return failures;
     }
+    let checks = checks();
+    let failures = checks.iter().filter(|c| c.level == Level::Fail).count();
     let s = Sty::new();
     println!(
         "{} {}  macOS {} ({})",

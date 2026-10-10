@@ -52,30 +52,30 @@ pub fn alerts(
     if s.avail < gb(th.disk_critical_gb) {
         v.push(Alert {
             key: "disk_critical",
-            title: t("agent.disk_critical"),
-            body: tf("agent.disk_body", &[("free", &free)]),
+            title: t("tick.disk_critical"),
+            body: tf("tick.disk_body", &[("free", &free)]),
             cooldown: HOUR,
             urgent: true,
         });
     } else if s.avail < gb(th.disk_warn_gb) {
         v.push(Alert {
             key: "disk_warn",
-            title: t("agent.disk_warn"),
-            body: tf("agent.disk_body", &[("free", &free)]),
+            title: t("tick.disk_warn"),
+            body: tf("tick.disk_body", &[("free", &free)]),
             cooldown: 12 * HOUR,
             urgent: false,
         });
     }
     if let Some((last_avail, last_t)) = prev {
-        let window = (i64::from(cfg.agent.interval_min) * 60) * 2 + 60;
+        let window = (i64::from(cfg.service.interval_min) * 60) * 2 + 60;
         let dropped = last_avail.saturating_sub(s.avail);
         if s.t - last_t <= window && dropped >= gb(th.disk_drop_gb) {
             let minutes = ((s.t - last_t) / 60).max(1);
             v.push(Alert {
                 key: "disk_drop",
-                title: t("agent.disk_drop"),
+                title: t("tick.disk_drop"),
                 body: tf(
-                    "agent.drop_body",
+                    "tick.drop_body",
                     &[
                         ("amount", &fmt_bytes(dropped)),
                         ("minutes", &minutes),
@@ -96,15 +96,15 @@ pub fn alerts(
     match s.pressure {
         4 => v.push(Alert {
             key: "mem_critical",
-            title: t("agent.mem_critical"),
-            body: tf("agent.mem_body", &[("apps", &apps)]),
+            title: t("tick.mem_critical"),
+            body: tf("tick.mem_body", &[("apps", &apps)]),
             cooldown: HOUR / 2,
             urgent: true,
         }),
         2 => v.push(Alert {
             key: "mem_warn",
-            title: t("agent.mem_warn"),
-            body: tf("agent.mem_body", &[("apps", &apps)]),
+            title: t("tick.mem_warn"),
+            body: tf("tick.mem_body", &[("apps", &apps)]),
             cooldown: 2 * HOUR,
             urgent: false,
         }),
@@ -113,9 +113,9 @@ pub fn alerts(
     if s.swap >= gb(th.swap_warn_gb) {
         v.push(Alert {
             key: "swap",
-            title: t("agent.swap"),
+            title: t("tick.swap"),
             body: tf(
-                "agent.swap_body",
+                "tick.swap_body",
                 &[("swap", &sys::fmt_mem(s.swap)), ("apps", &apps)],
             ),
             cooldown: 6 * HOUR,
@@ -135,7 +135,7 @@ pub fn in_quiet_hours(quiet: Option<[u32; 2]>, hour: u32) -> bool {
 }
 
 fn scan_due(cfg: &Config, st: &AgentState, now: i64) -> bool {
-    if !cfg.agent.daily_scan {
+    if !cfg.service.daily_scan {
         return false;
     }
     let last_report = state::load::<Report>(&state::report_path()).map_or(0, |r| r.time);
@@ -146,7 +146,7 @@ fn scan_due(cfg: &Config, st: &AgentState, now: i64) -> bool {
     let p = sys::power();
     p.on_ac
         || p.battery_pct
-            .is_some_and(|b| b >= cfg.agent.min_battery_pct)
+            .is_some_and(|b| b >= cfg.service.min_battery_pct)
 }
 
 pub fn daily_summary(cfg: &Config, r: &Report) -> Option<String> {
@@ -158,7 +158,7 @@ pub fn daily_summary(cfg: &Config, r: &Report) -> Option<String> {
         return None;
     }
     let mut body = tf(
-        "agent.daily_body",
+        "tick.daily_body",
         &[
             ("free", &fmt_bytes(r.disk_avail)),
             ("safe", &fmt_bytes(safe)),
@@ -167,7 +167,7 @@ pub fn daily_summary(cfg: &Config, r: &Report) -> Option<String> {
     if let Some(g) = r.growth.first() {
         body.push('\n');
         body.push_str(&tf(
-            "agent.daily_growth",
+            "tick.daily_growth",
             &[
                 ("path", &sys::tilde(std::path::Path::new(&g.path))),
                 ("delta", &sys::fmt_delta(g.delta)),
@@ -205,7 +205,7 @@ pub fn run(cfg: &Config) -> anyhow::Result<()> {
     } else {
         vec![]
     };
-    let quiet = in_quiet_hours(cfg.agent.quiet_hours, chrono::Local::now().hour());
+    let quiet = in_quiet_hours(cfg.service.quiet_hours, chrono::Local::now().hour());
     let mut sent = vec![];
     for a in alerts(cfg, &sample, prev, &top) {
         if quiet && !a.urgent {
@@ -235,7 +235,7 @@ pub fn run(cfg: &Config) -> anyhow::Result<()> {
                     && !quiet
                     && now - st.notified.get("daily").copied().unwrap_or(0) >= 20 * HOUR
                 {
-                    sys::notify(&t("agent.daily_title"), &body);
+                    sys::notify(&t("tick.daily_title"), &body);
                     st.notified.insert("daily".into(), now);
                     sent.push("daily");
                 }

@@ -21,6 +21,25 @@ pub struct Opts {
     pub yes: bool,
     pub dry_run: bool,
     pub trash: bool,
+    /// Also remove "review" candidates without a person confirming.
+    pub allow_review: bool,
+    pub json: bool,
+}
+
+/// Who is deciding. Unattended runs (`--yes`, `--json`, MCP, no terminal) get stricter rules:
+/// "review" candidates need an explicit opt-in and the total size is capped.
+#[derive(Clone, Copy)]
+pub struct Policy {
+    pub unattended: bool,
+    pub allow_review: bool,
+}
+
+impl Policy {
+    /// A person confirms in a terminal or the dashboard.
+    pub const INTERACTIVE: Policy = Policy {
+        unattended: false,
+        allow_review: true,
+    };
 }
 
 #[derive(Serialize)]
@@ -32,6 +51,7 @@ struct AuditEntry<'a> {
     estimated_bytes: u64,
     ok: bool,
     error: Option<String>,
+    unattended: bool,
 }
 
 /// Indices (into the report) of the selected candidates.
@@ -69,7 +89,7 @@ pub fn run(cfg: &Config, opts: &Opts) -> anyhow::Result<i32> {
     let Some(mut report) = state::load::<Report>(&state::report_path()) else {
         anyhow::bail!(t("clean.no_report"));
     };
-    if days_since(report.time) >= cfg.candidates.stale_report_days {
+    if !opts.json && days_since(report.time) >= cfg.candidates.stale_report_days {
         eprintln!(
             "{}",
             s.yellow(&tf("clean.stale", &[("days", &days_since(report.time))]))
@@ -79,8 +99,24 @@ pub fn run(cfg: &Config, opts: &Opts) -> anyhow::Result<i32> {
     if picked.is_empty() {
         anyhow::bail!(t("clean.nothing_selected"));
     }
+    let unattended = opts.yes || opts.json || !std::io::stdin().is_terminal();
+    let policy = Policy {
+        unattended,
+        allow_review: opts.allow_review,
+    };
+    let plan = prepare(cfg, &report, &picked, policy);
+    // With --json, nothing is removed unless --yes is given as well.
+    let dry_run = opts.dry_run || (opts.json && !opts.yes);
 
-    let plan = prepare(cfg, &report, &picked);
+    if opts.json {
+        if dry_run || plan.items.is_empty() {
+            crate::output::print_json(&crate::api::plan(&plan));
+            return Ok(i32::from(plan.items.is_empty()));
+        }
+        let out = apply(&mut report, &plan, opts.trash, true, true)?;
+        crate::output::print_json(&crate::api::outcome(&plan, &out));
+        return Ok(i32::from(!out.all_ok() || !plan.refused.is_empty()));
+    }
 
     println!("{}", s.bold(&t("clean.plan")));
     for (i, c) in &plan.items {
@@ -92,13 +128,13 @@ pub fn run(cfg: &Config, opts: &Opts) -> anyhow::Result<i32> {
         );
         println!("      {}", s.dim(&describe(&c.action, opts.trash)));
     }
-    for (title, why) in &plan.refused {
-        println!("  {}  {title}: {why}", s.yellow("--"));
+    for r in &plan.refused {
+        println!("  {}  {}: {}", s.yellow("--"), r.title, r.reason);
     }
     if plan.items.is_empty() {
         return Ok(1);
     }
-    if opts.dry_run {
+    if dry_run {
         println!("{}", s.dim(&t("clean.dry_run")));
         return Ok(0);
     }
@@ -116,7 +152,7 @@ pub fn run(cfg: &Config, opts: &Opts) -> anyhow::Result<i32> {
         }
     }
 
-    let out = apply(&mut report, &plan, opts.trash, false)?;
+    let out = apply(&mut report, &plan, opts.trash, false, unattended)?;
     for (title, result) in &out.results {
         match result {
             Ok(()) => println!("  {} {title}", s.green("✓")),
@@ -133,15 +169,20 @@ pub fn run(cfg: &Config, opts: &Opts) -> anyhow::Result<i32> {
     Ok(i32::from(!out.all_ok()))
 }
 
+pub struct Refused {
+    pub id: String,
+    pub title: String,
+    pub reason: String,
+}
+
 /// What `clean` would do: each selected candidate re-checked now, or the reason it is refused.
 pub struct Plan {
     /// (index in the report, fresh candidate)
     pub items: Vec<(usize, Candidate)>,
-    /// (title, reason)
-    pub refused: Vec<(String, String)>,
+    pub refused: Vec<Refused>,
 }
 
-pub fn prepare(cfg: &Config, report: &Report, picked: &[usize]) -> Plan {
+pub fn prepare(cfg: &Config, report: &Report, picked: &[usize], policy: Policy) -> Plan {
     let sizer = Sizer {
         snap: crate::scan::latest_snapshot(),
     };
@@ -158,14 +199,38 @@ pub fn prepare(cfg: &Config, report: &Report, picked: &[usize]) -> Plan {
     };
     for &i in picked {
         let old = &report.candidates[i];
+        let refuse = |reason: String| Refused {
+            id: old.id.clone(),
+            title: old.title.render(),
+            reason,
+        };
         if let Action::Manual { hint } = &old.action {
             plan.refused
-                .push((old.title.render(), tf("clean.manual", &[("hint", hint)])));
+                .push(refuse(tf("clean.manual", &[("hint", hint)])));
+            continue;
+        }
+        if policy.unattended && !policy.allow_review && old.safety == Safety::Review {
+            plan.refused.push(refuse(t("clean.needs_allow_review")));
             continue;
         }
         match detect::recheck(&ctx, old).and_then(|fresh| guard_paths(&fresh).map(|()| fresh)) {
             Ok(fresh) => plan.items.push((i, fresh)),
-            Err(why) => plan.refused.push((old.title.render(), why)),
+            Err(why) => plan.refused.push(refuse(why)),
+        }
+    }
+    let total: u64 = plan.items.iter().map(|(_, c)| c.bytes).sum();
+    let limit = crate::config::gb(cfg.clean.max_unattended_gb);
+    if policy.unattended && total > limit {
+        let reason = tf(
+            "clean.over_limit",
+            &[("total", &fmt_bytes(total)), ("limit", &fmt_bytes(limit))],
+        );
+        for (_, c) in plan.items.drain(..) {
+            plan.refused.push(Refused {
+                id: c.id.clone(),
+                title: c.title.render(),
+                reason: reason.clone(),
+            });
         }
     }
     plan
@@ -192,6 +257,7 @@ pub fn apply(
     plan: &Plan,
     force_trash: bool,
     quiet: bool,
+    unattended: bool,
 ) -> anyhow::Result<Outcome> {
     let before = sys::disk().avail;
     let mut done = vec![];
@@ -207,6 +273,7 @@ pub fn apply(
             estimated_bytes: c.bytes,
             ok: result.is_ok(),
             error: result.as_ref().err().cloned(),
+            unattended,
         };
         let _ = state::append_line(&state::audit_path(), &entry);
         if result.is_ok() {

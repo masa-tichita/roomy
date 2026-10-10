@@ -702,7 +702,8 @@ fn draw_confirm(f: &mut Frame, app: &App) {
             th.fg(th.dim),
         ));
     }
-    for (title, why) in &plan.refused {
+    for r in &plan.refused {
+        let (title, why) = (&r.title, &r.reason);
         lines.push(Line::from(vec![
             Span::styled("       --  ", th.fg(th.review)),
             Span::raw(format!("{title}: {why}")),

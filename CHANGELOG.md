@@ -14,7 +14,11 @@ All notable changes are documented here. The format follows
   obsolete editor extensions, Docker, unused large apps and old downloads.
 - Data-driven rules (`rules/builtin.toml`) with user rules, overrides and disabling.
 - Growth detection between scans.
-- Background agent (`roomy service install`) with notifications for low or fast-dropping free
+- Background service (`roomy service install`) with notifications for low or fast-dropping free
   space, memory pressure and swap, plus a daily scan.
 - Safety: re-check before removal, path guard, audit log, Trash for user data.
 - English and Japanese messages; JSON output with a schema version.
+- AI agent support: compact `--json` summaries, `explain`, JSON plans and results for `clean`,
+  guard rails for unattended removal (`--allow-review`, `[clean] max_unattended_gb`),
+  `roomy guide` (agent instructions, Claude Code skill, AGENTS.md snippet) and an MCP server
+  (`roomy mcp`).

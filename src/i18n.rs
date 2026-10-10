@@ -104,7 +104,7 @@ pub fn tf(key: &str, args: &[(&str, &dyn std::fmt::Display)]) -> String {
 }
 
 /// A message stored in reports. Rendered when shown, so the language always matches the reader
-/// (the agent may scan in Japanese while the terminal is English, or the other way round).
+/// (the background service may scan in Japanese while the terminal is English, or the other way round).
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 #[serde(untagged)]
 pub enum Msg {

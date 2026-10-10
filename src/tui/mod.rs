@@ -7,13 +7,13 @@
 mod theme;
 mod view;
 
-use crate::agent::Sample;
 use crate::clean::{self, Outcome, Plan};
 use crate::config::Config;
 use crate::i18n::t;
 use crate::model::{Action, Report, Safety};
 use crate::state;
 use crate::sys::{self, AppMem, Disk, Mem};
+use crate::tick::Sample;
 use crate::walk::Snapshot;
 use ratatui::DefaultTerminal;
 use ratatui::crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
@@ -248,7 +248,12 @@ impl App {
         }
         let cfg = self.cfg.clone();
         self.spawn(t("tui.checking"), move || {
-            Job::Planned(clean::prepare(&cfg, &report, &picked))
+            Job::Planned(clean::prepare(
+                &cfg,
+                &report,
+                &picked,
+                clean::Policy::INTERACTIVE,
+            ))
         });
     }
 
@@ -261,7 +266,7 @@ impl App {
                 return Job::Cleaned(Err(t("scan.locked")));
             };
             Job::Cleaned(
-                clean::apply(&mut report, &plan, false, true)
+                clean::apply(&mut report, &plan, false, true, false)
                     .map(|o| (o, report))
                     .map_err(|e| e.to_string()),
             )

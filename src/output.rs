@@ -6,12 +6,18 @@ use crate::model::{Action, Report, Safety};
 use crate::sys::{self, Sty, fmt_bytes, fmt_delta, fmt_time, pad, pad_left, tilde};
 use crate::walk::Snapshot;
 use serde::Serialize;
-use std::collections::BTreeMap;
 use std::path::Path;
 
 /// Our output types always serialize; a failure would be a bug worth a clear message.
+/// Indented for people at a terminal, compact for programs (fewer tokens for AI agents).
 pub fn print_json<T: Serialize>(v: &T) {
-    match serde_json::to_string_pretty(v) {
+    use std::io::IsTerminal;
+    let text = if std::io::stdout().is_terminal() {
+        serde_json::to_string_pretty(v)
+    } else {
+        serde_json::to_string(v)
+    };
+    match text {
         Ok(s) => println!("{s}"),
         Err(e) => eprintln!("roomy: cannot serialize output: {e}"),
     }
@@ -36,28 +42,6 @@ fn safety_label(s: &Sty, safety: Safety) -> String {
     }
 }
 
-#[derive(Serialize)]
-pub struct AppJson {
-    name: String,
-    rss: u64,
-    processes: usize,
-}
-
-#[derive(Serialize)]
-pub struct StatusJson {
-    schema: u32,
-    disk_total: u64,
-    disk_avail: u64,
-    memory_total: u64,
-    memory_free_pct: Option<i64>,
-    memory_pressure: i64,
-    swap_used: u64,
-    top_apps: Vec<AppJson>,
-    last_scan: Option<i64>,
-    safe_bytes: Option<u64>,
-    review_bytes: Option<u64>,
-}
-
 /// Returns true when something is over a threshold (for `status --exit-code`).
 pub fn status(cfg: &Config, json: bool) -> bool {
     let disk = sys::disk();
@@ -66,27 +50,7 @@ pub fn status(cfg: &Config, json: bool) -> bool {
     let report = crate::state::load::<Report>(&crate::state::report_path());
     let alarming = disk.avail < crate::config::gb(cfg.thresholds.disk_warn_gb) || mem.pressure >= 2;
     if json {
-        let j = StatusJson {
-            schema: crate::app::SCHEMA,
-            disk_total: disk.total,
-            disk_avail: disk.avail,
-            memory_total: mem.total,
-            memory_free_pct: mem.free_pct,
-            memory_pressure: mem.pressure,
-            swap_used: mem.swap_used,
-            top_apps: apps
-                .iter()
-                .map(|a| AppJson {
-                    name: a.name.clone(),
-                    rss: a.rss,
-                    processes: a.procs,
-                })
-                .collect(),
-            last_scan: report.as_ref().map(|r| r.time),
-            safe_bytes: report.as_ref().map(|r| r.total(Safety::Safe)),
-            review_bytes: report.as_ref().map(|r| r.total(Safety::Review)),
-        };
-        print_json(&j);
+        print_json(&crate::api::status(cfg).0);
         return alarming;
     }
     let s = Sty::new();
@@ -306,27 +270,7 @@ pub fn top(snap: &Snapshot, prev: Option<&Snapshot>, dir: &Path, n: usize, json:
     let delta =
         |p: &str, now: u64| prev.and_then(|pv| pv.entries.get(p).map(|b| now as i64 - *b as i64));
     if json {
-        #[derive(Serialize)]
-        struct Row<'a> {
-            path: &'a str,
-            bytes: u64,
-            delta: Option<i64>,
-        }
-        let rows: Vec<Row> = kids
-            .iter()
-            .map(|(p, b)| Row {
-                path: p,
-                bytes: *b,
-                delta: delta(p, *b),
-            })
-            .collect();
-        print_json(&serde_json::json!({
-            "schema": crate::app::SCHEMA,
-            "path": key,
-            "time": snap.time,
-            "bytes": snap.entries.get(&*key),
-            "folders": rows,
-        }));
+        print_json(&crate::api::top(snap, prev, dir, n));
         return;
     }
     let s = Sty::new();
@@ -362,21 +306,9 @@ pub fn top(snap: &Snapshot, prev: Option<&Snapshot>, dir: &Path, n: usize, json:
     }
 }
 
-pub fn history(samples: &[crate::agent::Sample], days: usize, json: bool) {
-    let mut by_day: BTreeMap<String, (u64, u64)> = BTreeMap::new();
-    for x in samples {
-        let day = fmt_time(x.t).chars().take(10).collect::<String>();
-        let e = by_day.entry(day).or_insert((u64::MAX, x.total));
-        e.0 = e.0.min(x.avail);
-    }
-    let rows: Vec<_> = by_day.into_iter().rev().take(days).collect();
+pub fn history(samples: &[crate::tick::Sample], days: usize, json: bool) {
     if json {
-        let days: Vec<serde_json::Value> = rows
-            .iter()
-            .rev()
-            .map(|(d, (min_free, total))| serde_json::json!({ "date": d, "min_free": min_free, "total": total }))
-            .collect();
-        print_json(&serde_json::json!({ "schema": crate::app::SCHEMA, "days": days }));
+        print_json(&crate::api::history(samples, days));
         return;
     }
     let s = Sty::new();
@@ -385,7 +317,7 @@ pub fn history(samples: &[crate::agent::Sample], days: usize, json: bool) {
         return;
     }
     println!("{}", s.bold(&t("history.title")));
-    for (day, (min_free, total)) in rows.into_iter().rev() {
+    for (day, min_free, total) in crate::api::daily_minimum(samples, days) {
         println!(
             "  {day}  {}  {}",
             pad_left(&fmt_bytes(min_free), 9),
@@ -397,25 +329,7 @@ pub fn history(samples: &[crate::agent::Sample], days: usize, json: bool) {
 pub fn rules(cfg: &Config, json: bool) {
     let rules = crate::rules::all(cfg);
     if json {
-        use crate::i18n::Lang::En;
-        let list: Vec<serde_json::Value> = rules
-            .iter()
-            .map(|r| {
-                let ov = cfg.rule_overrides.get(&r.id);
-                serde_json::json!({
-                    "id": r.id,
-                    "enabled": !cfg.disabled_rules.contains(&r.id),
-                    "title": r.title.get_in(En),
-                    "paths": r.paths,
-                    "target": r.target,
-                    "safety": ov.and_then(|o| o.safety).unwrap_or(r.safety),
-                    "action": r.action,
-                    "command": r.command,
-                    "builtin": crate::rules::builtin().iter().any(|b| b.id == r.id),
-                })
-            })
-            .collect();
-        print_json(&serde_json::json!({ "schema": crate::app::SCHEMA, "rules": list }));
+        print_json(&crate::api::rules(cfg));
         return;
     }
     let s = Sty::new();
@@ -451,28 +365,45 @@ pub fn rules(cfg: &Config, json: bool) {
     }
 }
 
-/// Report for `--json`: same shape as report.json, with every message rendered to text.
-pub fn report_json(r: &Report) -> serde_json::Value {
-    use crate::i18n::Lang::En;
-    let render_all = |v: &[crate::i18n::Msg]| -> serde_json::Value {
-        v.iter().map(|m| m.render_in(En)).collect::<Vec<_>>().into()
+/// `roomy explain` for people.
+pub fn explain(r: &Report, target: &str, max_paths: usize) {
+    let s = Sty::new();
+    let Some(i) = crate::api::find(r, target) else {
+        return;
     };
-    let mut v = serde_json::to_value(r).unwrap_or_default();
-    if let Some(list) = v["candidates"].as_array_mut() {
-        for (j, c) in list.iter_mut().zip(&r.candidates) {
-            j["title"] = c.title.render_in(En).into();
-            j["category"] = c.category.render_in(En).into();
-            j["evidence"] = render_all(&c.evidence);
-            j["notes"] = render_all(&c.notes);
-            if let Action::Manual { hint } = &c.action {
-                j["action"]["hint"] = hint.render_in(En).into();
+    let c = &r.candidates[i];
+    println!(
+        "{}  {}",
+        s.bold(&c.title.render()),
+        s.dim(&format!("#{} · {}", i + 1, c.id))
+    );
+    println!(
+        "{}  {}  {}",
+        fmt_bytes(c.bytes),
+        safety_label(&s, c.safety),
+        s.dim(&c.category.render())
+    );
+    println!("{}", s.dim(&c.path));
+    for e in &c.evidence {
+        println!("  {} {}", s.green("✓"), e.render());
+    }
+    for n in &c.notes {
+        println!("  {} {}", s.yellow("•"), n.render());
+    }
+    println!("  → {}", crate::clean::describe(&c.action, false));
+    match &c.action {
+        Action::Paths { paths, .. } => {
+            for p in paths.iter().take(max_paths) {
+                println!("    {}", s.dim(&tilde(Path::new(p))));
+            }
+            if paths.len() > max_paths {
+                println!(
+                    "    {}",
+                    s.dim(&tf("common.and_more", &[("n", &(paths.len() - max_paths))]))
+                );
             }
         }
+        Action::Command { argv, .. } => println!("    {}", s.dim(&argv.join(" "))),
+        Action::Manual { hint } => println!("    {}", s.dim(&hint.render())),
     }
-    if let Some(list) = v["excluded"].as_array_mut() {
-        for (j, e) in list.iter_mut().zip(&r.excluded) {
-            j["reason"] = e.reason.render_in(En).into();
-        }
-    }
-    v
 }

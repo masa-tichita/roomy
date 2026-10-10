@@ -9,7 +9,7 @@ use crate::sys::{self, expand};
 use crate::walk::{self, Sizer, Snapshot};
 use std::path::PathBuf;
 
-/// `background`: started by the agent, not by the user. Throttles I/O and, without Full Disk
+/// `background`: started by the background service, not by the user. Throttles I/O and, without Full Disk
 /// Access, stays out of TCC-protected folders so no permission dialogs appear.
 pub fn run(cfg: &Config, background: bool) -> anyhow::Result<Report> {
     if background {

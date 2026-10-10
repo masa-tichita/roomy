@@ -22,8 +22,9 @@ pub struct Config {
     pub worktrees: Worktrees,
     pub apps: Apps,
     pub downloads: Downloads,
+    pub clean: CleanCfg,
     pub versioned: Vec<VersionedDir>,
-    pub agent: Agent,
+    pub service: Service,
     /// Rule ids to turn off.
     pub disabled_rules: Vec<String>,
     /// Per-rule changes, e.g. `[rule_overrides."claude.desktop-vm"] safety = "safe"`.
@@ -37,7 +38,7 @@ pub struct Config {
 pub struct Thresholds {
     pub disk_warn_gb: f64,
     pub disk_critical_gb: f64,
-    /// Notify when free space drops this much between two agent runs.
+    /// Notify when free space drops this much between two background checks.
     pub disk_drop_gb: f64,
     pub swap_warn_gb: f64,
     /// Report folders that grew this much since the previous scan.
@@ -93,6 +94,22 @@ pub struct Apps {
     pub keep: Vec<String>,
 }
 
+/// Limits for unattended removal (`--yes`, `--json`, MCP).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct CleanCfg {
+    /// One unattended `clean` may remove at most this much; larger plans need a person.
+    pub max_unattended_gb: f64,
+}
+
+impl Default for CleanCfg {
+    fn default() -> Self {
+        CleanCfg {
+            max_unattended_gb: 50.0,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Downloads {
@@ -113,7 +130,7 @@ fn default_keep() -> usize {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
-pub struct Agent {
+pub struct Service {
     pub interval_min: u32,
     pub daily_scan: bool,
     /// On battery, the daily scan waits until the charge is at least this.
@@ -133,11 +150,12 @@ impl Default for Config {
             worktrees: Worktrees::default(),
             apps: Apps::default(),
             downloads: Downloads::default(),
+            clean: CleanCfg::default(),
             versioned: vec![VersionedDir {
                 path: "~/.codex/packages/app-server-daemon/releases".into(),
                 keep: 2,
             }],
-            agent: Agent::default(),
+            service: Service::default(),
             disabled_rules: vec![],
             rule_overrides: BTreeMap::new(),
             rules: vec![],
@@ -221,9 +239,9 @@ impl Default for Downloads {
     }
 }
 
-impl Default for Agent {
+impl Default for Service {
     fn default() -> Self {
-        Agent {
+        Service {
             interval_min: 15,
             daily_scan: true,
             min_battery_pct: 50,
@@ -311,7 +329,7 @@ fn unknown_keys(given: &toml::Value, known: &toml::Value, prefix: &str, out: &mu
 
 /// Keys whose default is `None`, so they do not appear in the serialized defaults.
 fn is_optional_key(key: &str) -> bool {
-    matches!(key, "agent.quiet_hours")
+    matches!(key, "service.quiet_hours")
 }
 
 /// Starter file: commented-out defaults so the user can see every knob.
@@ -365,10 +383,11 @@ mod tests {
 
     #[test]
     fn optional_and_free_form_keys_are_not_typos() {
-        let text = "[agent]\nquiet_hours = [23, 7]\n[rule_overrides.\"x.y\"]\nsafety = \"safe\"\n";
+        let text =
+            "[service]\nquiet_hours = [23, 7]\n[rule_overrides.\"x.y\"]\nsafety = \"safe\"\n";
         let (c, unknown) = parse(text).unwrap();
         assert!(unknown.is_empty(), "{unknown:?}");
-        assert_eq!(c.agent.quiet_hours, Some([23, 7]));
+        assert_eq!(c.service.quiet_hours, Some([23, 7]));
     }
 
     #[test]

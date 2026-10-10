@@ -12,7 +12,7 @@ pub fn report_path() -> PathBuf {
 }
 
 pub fn agent_state_path() -> PathBuf {
-    state_dir().join("agent.json")
+    state_dir().join("tick.json")
 }
 
 pub fn history_path() -> PathBuf {
@@ -32,7 +32,7 @@ pub fn lock_path() -> PathBuf {
 }
 
 pub fn log_path() -> PathBuf {
-    state_dir().join("logs/agent.log")
+    state_dir().join("logs/tick.log")
 }
 
 fn ensure_dir(d: &Path) -> std::io::Result<()> {

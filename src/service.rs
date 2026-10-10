@@ -1,4 +1,4 @@
-//! The `LaunchAgent` that runs `roomy agent` periodically (for installs not managed by Homebrew).
+//! The `LaunchAgent` that runs `roomy tick` periodically (for installs not managed by Homebrew).
 
 use crate::app;
 use crate::config::Config;
@@ -54,7 +54,7 @@ pub fn plist(exe: &Path, interval_min: u32) -> String {
 <dict>
   <key>Label</key><string>{label}</string>
   <key>ProgramArguments</key>
-  <array><string>{exe}</string><string>agent</string></array>
+  <array><string>{exe}</string><string>tick</string></array>
   <key>StartInterval</key><integer>{secs}</integer>
   <key>RunAtLoad</key><true/>
   <key>ProcessType</key><string>Background</string>
@@ -67,7 +67,7 @@ pub fn plist(exe: &Path, interval_min: u32) -> String {
 </dict>
 </plist>
 "#,
-        label = app::AGENT_LABEL,
+        label = app::SERVICE_LABEL,
         exe = xml_escape(&exe.to_string_lossy()),
         secs = interval_min.max(5) * 60,
         path = xml_escape(&sys::agent_path()),
@@ -86,11 +86,11 @@ pub fn install(cfg: &Config, force: bool) -> anyhow::Result<()> {
     if brew_loaded() {
         anyhow::bail!(t("service.brew_loaded"));
     }
-    let path = app::launch_agent_path();
+    let path = app::launch_agent_plist();
     fs::create_dir_all(sys::home().join("Library/LaunchAgents"))?;
     state::ensure_log_dir();
-    fs::write(&path, plist(&exe, cfg.agent.interval_min))?;
-    let target = format!("{}/{}", domain(), app::AGENT_LABEL);
+    fs::write(&path, plist(&exe, cfg.service.interval_min))?;
+    let target = format!("{}/{}", domain(), app::SERVICE_LABEL);
     let _ = run(
         &["launchctl", "bootout", &target],
         None,
@@ -109,20 +109,23 @@ pub fn install(cfg: &Config, force: bool) -> anyhow::Result<()> {
     }
     println!(
         "{}",
-        tf("service.installed", &[("minutes", &cfg.agent.interval_min)])
+        tf(
+            "service.installed",
+            &[("minutes", &cfg.service.interval_min)]
+        )
     );
     println!("{}", tf("service.fda_hint", &[("exe", &exe.display())]));
     Ok(())
 }
 
 pub fn uninstall() -> anyhow::Result<()> {
-    let target = format!("{}/{}", domain(), app::AGENT_LABEL);
+    let target = format!("{}/{}", domain(), app::SERVICE_LABEL);
     let _ = run(
         &["launchctl", "bootout", &target],
         None,
         Duration::from_secs(10),
     );
-    let path = app::launch_agent_path();
+    let path = app::launch_agent_plist();
     if path.exists() {
         fs::remove_file(&path)?;
     }
@@ -131,7 +134,7 @@ pub fn uninstall() -> anyhow::Result<()> {
 }
 
 pub fn status_line() -> String {
-    let own = is_loaded(app::AGENT_LABEL);
+    let own = is_loaded(app::SERVICE_LABEL);
     let brew = brew_loaded();
     match (own, brew) {
         (true, true) => t("service.both"),
@@ -157,10 +160,10 @@ mod tests {
     }
 
     #[test]
-    fn plist_escapes_and_has_agent_args() {
+    fn plist_escapes_and_runs_tick() {
         let p = plist(Path::new("/a&b/roomy"), 15);
         assert!(p.contains("/a&amp;b/roomy"));
-        assert!(p.contains("<string>agent</string>"));
+        assert!(p.contains("<string>tick</string>"));
         assert!(p.contains("<integer>900</integer>"));
     }
 }

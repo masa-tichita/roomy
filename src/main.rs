@@ -1,11 +1,13 @@
-mod agent;
+mod api;
 mod app;
 mod clean;
 mod config;
 mod detect;
 mod doctor;
 mod guard;
+mod guide;
 mod i18n;
+mod mcp;
 mod model;
 mod output;
 mod rules;
@@ -13,6 +15,7 @@ mod scan;
 mod service;
 mod state;
 mod sys;
+mod tick;
 mod tui;
 mod walk;
 
@@ -56,6 +59,9 @@ enum Cmd {
     Scan {
         #[arg(long)]
         json: bool,
+        /// With --json: every field and path instead of the summary (large)
+        #[arg(long)]
+        full: bool,
         /// Send a notification with the summary
         #[arg(long)]
         notify: bool,
@@ -64,6 +70,9 @@ enum Cmd {
     Report {
         #[arg(long)]
         json: bool,
+        /// With --json: every field and path instead of the summary (large)
+        #[arg(long)]
+        full: bool,
         /// Also show ids, paths and why worktrees were left out
         #[arg(short, long)]
         verbose: bool,
@@ -84,6 +93,39 @@ enum Cmd {
         /// Move files to the Trash instead of deleting them
         #[arg(long)]
         trash: bool,
+        /// Unattended runs: also remove candidates marked "review"
+        #[arg(long)]
+        allow_review: bool,
+        /// Machine-readable plan or result. Without --yes this is a dry run.
+        #[arg(long)]
+        json: bool,
+    },
+    /// One candidate in detail: evidence, caveats, the paths or command it involves
+    Explain {
+        /// Candidate number or id
+        target: String,
+        #[arg(long)]
+        json: bool,
+        /// How many paths to list
+        #[arg(long, default_value_t = 20)]
+        max_paths: usize,
+    },
+    /// How AI agents should use roomy (also as a Claude Code skill or AGENTS.md snippet)
+    Guide {
+        #[arg(long, value_enum, default_value = "text")]
+        format: guide::Format,
+        /// Install the Claude Code skill to ~/.claude/skills/roomy/SKILL.md
+        #[arg(long)]
+        install_claude_skill: bool,
+        /// With --install-claude-skill: overwrite an existing file
+        #[arg(long)]
+        force: bool,
+    },
+    /// Model Context Protocol server on stdio, for AI agents
+    Mcp {
+        /// Do not offer the removal tool
+        #[arg(long)]
+        read_only: bool,
     },
     /// Largest folders from the last scan (no disk walk)
     Top {
@@ -100,15 +142,15 @@ enum Cmd {
         #[arg(long)]
         json: bool,
     },
-    /// Periodic check, run by launchd
+    /// Periodic check, run by launchd every few minutes
     #[command(hide = true)]
-    Agent,
-    /// Install or remove the background agent (not needed with `brew services`)
+    Tick,
+    /// Install or remove the background service (not needed with `brew services`)
     Service {
         #[command(subcommand)]
         action: ServiceCmd,
     },
-    /// Diagnose permissions, tools, configuration and the agent
+    /// Diagnose permissions, tools, configuration and the background service
     Doctor {
         #[arg(long)]
         json: bool,
@@ -123,6 +165,25 @@ enum Cmd {
         #[arg(long)]
         json: bool,
     },
+}
+
+impl Cmd {
+    /// Output meant for programs: JSON, or the MCP protocol.
+    fn machine_output(&self) -> bool {
+        match self {
+            Cmd::Status { json, .. }
+            | Cmd::Scan { json, .. }
+            | Cmd::Report { json, .. }
+            | Cmd::Clean { json, .. }
+            | Cmd::Explain { json, .. }
+            | Cmd::Top { json, .. }
+            | Cmd::History { json, .. }
+            | Cmd::Doctor { json }
+            | Cmd::Rules { json } => *json,
+            Cmd::Mcp { .. } => true,
+            _ => false,
+        }
+    }
 }
 
 #[derive(Subcommand)]
@@ -169,7 +230,13 @@ fn main() -> ExitCode {
         }
     });
     let loaded = config::load();
-    i18n::init(&loaded.config.language);
+    // Machine output is always English, so it does not depend on who runs it.
+    let machine = cmd.machine_output();
+    i18n::init(if machine {
+        "en"
+    } else {
+        &loaded.config.language
+    });
     if let Some(e) = &loaded.error
         && !matches!(
             cmd,
@@ -187,7 +254,11 @@ fn main() -> ExitCode {
     match run(cmd, &loaded.config) {
         Ok(code) => ExitCode::from(code),
         Err(e) => {
-            eprintln!("{}: {e:#}", app::NAME);
+            if machine {
+                output::print_json(&api::error(&format!("{e:#}")));
+            } else {
+                eprintln!("{}: {e:#}", app::NAME);
+            }
             ExitCode::from(app::EXIT_ERROR)
         }
     }
@@ -224,7 +295,7 @@ fn run(cmd: Cmd, cfg: &config::Config) -> anyhow::Result<u8> {
                 0
             })
         }
-        Cmd::Scan { json, notify } => {
+        Cmd::Scan { json, full, notify } => {
             let Some(_lock) = sys::try_lock(&state::lock_path()) else {
                 anyhow::bail!(t("scan.locked"))
             };
@@ -233,27 +304,33 @@ fn run(cmd: Cmd, cfg: &config::Config) -> anyhow::Result<u8> {
             }
             let r = scan::run(cfg, false)?;
             if json {
-                println!(
-                    "{}",
-                    serde_json::to_string_pretty(&output::report_json(&r))?
-                );
+                output::print_json(&if full {
+                    api::full_report(&r)
+                } else {
+                    api::summary(&r)
+                });
             } else {
                 output::report(&r, false);
             }
-            if notify && let Some(body) = agent::daily_summary(cfg, &r) {
-                sys::notify(&t("agent.daily_title"), &body);
+            if notify && let Some(body) = tick::daily_summary(cfg, &r) {
+                sys::notify(&t("tick.daily_title"), &body);
             }
             Ok(0)
         }
-        Cmd::Report { json, verbose } => {
+        Cmd::Report {
+            json,
+            full,
+            verbose,
+        } => {
             let Some(r) = state::load::<model::Report>(&state::report_path()) else {
                 anyhow::bail!(t("clean.no_report"))
             };
             if json {
-                println!(
-                    "{}",
-                    serde_json::to_string_pretty(&output::report_json(&r))?
-                );
+                output::print_json(&if full {
+                    api::full_report(&r)
+                } else {
+                    api::summary(&r)
+                });
             } else {
                 output::report(&r, verbose);
             }
@@ -265,6 +342,8 @@ fn run(cmd: Cmd, cfg: &config::Config) -> anyhow::Result<u8> {
             yes,
             dry_run,
             trash,
+            allow_review,
+            json,
         } => {
             let Some(_lock) = sys::try_lock(&state::lock_path()) else {
                 anyhow::bail!(t("scan.locked"))
@@ -277,9 +356,44 @@ fn run(cmd: Cmd, cfg: &config::Config) -> anyhow::Result<u8> {
                     yes,
                     dry_run,
                     trash,
+                    allow_review,
+                    json,
                 },
             )?;
             Ok(code as u8)
+        }
+        Cmd::Explain {
+            target,
+            json,
+            max_paths,
+        } => {
+            let Some(r) = state::load::<model::Report>(&state::report_path()) else {
+                anyhow::bail!(t("clean.no_report"))
+            };
+            let v = api::explain(&r, &target, max_paths).map_err(anyhow::Error::msg)?;
+            if json {
+                output::print_json(&v);
+            } else {
+                output::explain(&r, &target, max_paths);
+            }
+            Ok(0)
+        }
+        Cmd::Guide {
+            format,
+            install_claude_skill,
+            force,
+        } => {
+            if install_claude_skill {
+                let path = guide::install_claude_skill(force)?;
+                println!("{}", tf("guide.installed", &[("path", &path.display())]));
+            } else {
+                print!("{}", guide::render(format));
+            }
+            Ok(0)
+        }
+        Cmd::Mcp { read_only } => {
+            mcp::serve(cfg, read_only)?;
+            Ok(0)
         }
         Cmd::Top { path, n, json } => {
             let files = state::snapshot_files();
@@ -305,8 +419,8 @@ fn run(cmd: Cmd, cfg: &config::Config) -> anyhow::Result<u8> {
             output::history(&state::read_lines(&state::history_path()), days, json);
             Ok(0)
         }
-        Cmd::Agent => {
-            agent::run(cfg)?;
+        Cmd::Tick => {
+            tick::run(cfg)?;
             Ok(0)
         }
         Cmd::Service { action } => {

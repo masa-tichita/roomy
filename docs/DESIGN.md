@@ -41,7 +41,10 @@
 | `clean <番号/ID...>` | 候補を削除。`--dry-run`、`--yes`、`--trash`。実行前に再検証、実行後に実際に空いた量 |
 | `top [PATH]` | 最新スナップショットからフォルダの大きい順と前回比（再走査不要の du 代わり） |
 | `history` | 空き容量の推移（日ごとの最小値） |
-| `agent` | launchd から定期実行される入口。軽いチェック＋必要なら日次スキャン（§6） |
+| `explain <id>` | 候補 1 件の詳細（根拠・注意・削除対象のパスやコマンド） |
+| `guide` | AI エージェント向けの手順。Claude Code のスキルや AGENTS.md 用の文面としても出力 |
+| `mcp` | MCP サーバー（stdio）。CLI の `--json` と同じ結果をツールとして提供（§14） |
+| `tick` | launchd から定期実行される入口（非公開）。軽いチェック＋必要なら日次スキャン（§6） |
 | `service install / uninstall / status` | LaunchAgent の登録・解除・状態 |
 | `doctor` | 権限（FDA）、使える外部ツール、サービス状態、設定の妥当性、通知手段を診断 |
 | `config path / show / init / validate` | 設定ファイル |
@@ -227,7 +230,24 @@ Homebrew 経由なら formula の `service`（`run_type :interval`）で同じ L
 | v0.3 | 署名・公証、名前確定・公開、ルールのコミュニティ追加 |
 | 以降 | メニューバー表示（SwiftBar プラグイン出力）、外部ボリューム対応 |
 
-## 14. 未決事項
+## 14. AI エージェント対応（主要な使い方）
+
+エージェントが即興の `du` / `rm` の代わりに roomy を呼ぶことで、結果が決定的になり、トークンも安全性も改善する。
+
+- **要約優先の出力**: `report --json` は候補ごとに id・容量・判定・根拠・注意・操作の種類だけ（パス一覧なし）。
+  詳細は `explain <id> --json`。ターミナル以外には改行なしの JSON を出す。実測で全量 約 90 KB → 要約 約 10 KB。
+- **言語非依存**: JSON は常に英語。`--json` と MCP では UI 言語の設定を無視する。エラーも JSON で返す。
+- **削除の契約**: `clean <id> --json` はドライラン（計画と拒否理由）、`--yes` を付けて初めて削除。
+- **無人実行の歯止め**（`--yes`・`--json`・MCP）: 「要確認」は `--allow-review` が必要。
+  1 回の上限 `[clean] max_unattended_gb`（既定 50 GB）。監査ログに `unattended` を記録。
+- **説明書の同梱**: `roomy guide`（4 KB 未満をテストで保証）、`--format skill`（Claude Code スキル）、
+  `--format agents-md`、`--install-claude-skill`。
+- **MCP サーバー**: 改行区切り JSON-RPC 2.0。`initialize` でクライアントのプロトコル版に合わせる。
+  ツールは status / report / scan / explain / top / history / doctor / plan_clean / clean。
+  `readOnlyHint` / `destructiveHint` の注釈付き。`--read-only` で clean を出さない。
+  scan は常駐サービスと同じ扱い（フルディスクアクセスが無ければ保護フォルダを走査しない）で、ホストアプリ名義の許可ダイアログを出さない。
+
+## 15. 未決事項
 
 - 名前
 - `ATTR_CMNEXT_PRIVATESIZE` の実用性（対応 OS・速度）
