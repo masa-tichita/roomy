@@ -36,13 +36,13 @@ jobs:
             echo "::error::secret HOMEBREW_TAP_TOKEN is missing or empty (see RELEASING.md)"
             exit 1
           fi
-          # Ask GitHub before cloning, so a bad token gets a clear message.
-          if ! push=$(GH_TOKEN="$token" gh api repos/masa-tichita/homebrew-tap --jq .permissions.push 2>/dev/null); then
-            echo "::error::HOMEBREW_TAP_TOKEN is not a valid token (expired, revoked, or not a token) — create a new one, see RELEASING.md"
-            exit 1
-          fi
-          if [ "$push" != "true" ]; then
-            echo "::error::HOMEBREW_TAP_TOKEN cannot write to masa-tichita/homebrew-tap — give it Contents: Read and write on that repository"
+          # Try the token with git itself before doing anything else. (The REST API's
+          # `permissions` field describes the account, not a fine-grained token, so it can't tell
+          # whether the token was granted this repository.)
+          auth=$(printf 'x-access-token:%s' "$token" | base64 | tr -d '\n')
+          if ! git -c http.https://github.com/.extraheader="AUTHORIZATION: basic $auth" \
+              ls-remote https://github.com/masa-tichita/homebrew-tap.git HEAD >/dev/null 2>&1; then
+            echo "::error::HOMEBREW_TAP_TOKEN cannot access masa-tichita/homebrew-tap: check that the token is valid and that its repository access includes homebrew-tap with Contents: Read and write (see RELEASING.md)"
             exit 1
           fi
 
