@@ -11,3 +11,6 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    ignore:
+      # `@stable` and `@1.88` select Rust toolchains (the MSRV job), not action versions.
+      - dependency-name: dtolnay/rust-toolchain
