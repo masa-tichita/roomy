@@ -14,6 +14,12 @@ All notable changes are documented here. The format follows
   confirmation, apps with the normal Quit. System processes and roomy's own session are never
   offered. `status` shows swap and space outside home.
 
+### Changed
+
+- "Grew" entries are measured for the folder's own data (`private` in JSON). Folders whose growth
+  is mostly APFS clones — `XCTestDevices` showed +60.9 GB while only ~0.2 GB was new data — now
+  say so in the report and the dashboard, and JSON marks them `mostly_shared` (#21).
+
 ### Fixed
 
 - "In use" checks (`skip_if_running`) match whole program names: the `xcodebuildmcp` MCP server

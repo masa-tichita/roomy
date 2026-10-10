@@ -59,6 +59,12 @@ pub fn run(cfg: &Config, background: bool) -> anyhow::Result<Report> {
         off_limits,
     };
     let (candidates, excluded) = detect::detect_all(&ctx);
+    let mut growth = growth;
+    walk::measure_growth(
+        &mut growth,
+        &sizer.snap.roots,
+        std::time::Instant::now() + GROWTH_BUDGET,
+    );
 
     let disk = sys::disk();
     let report = Report {
@@ -81,6 +87,9 @@ pub fn run(cfg: &Config, background: bool) -> anyhow::Result<Report> {
     state::save(&state::report_path(), &report)?;
     Ok(report)
 }
+
+/// Time for measuring how much of each grown folder is its own data, after the candidates.
+const GROWTH_BUDGET: std::time::Duration = std::time::Duration::from_secs(10);
 
 /// A new, unused file name that sorts after every earlier snapshot. Milliseconds, plus a counter,
 /// because two scans can finish within the same second.

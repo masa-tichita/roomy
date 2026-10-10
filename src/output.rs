@@ -255,6 +255,13 @@ pub fn report(r: &Report, verbose: bool) {
                 tilde(Path::new(&g.path)),
                 s.dim(&tf("report.now", &[("size", &fmt_bytes(g.now))]))
             );
+            if let Some(own) = g.mostly_shared() {
+                println!(
+                    "  {}  {}",
+                    " ".repeat(10),
+                    s.dim(&tf("report.grew_shared", &[("own", &fmt_bytes(own))]))
+                );
+            }
         }
     }
     if !r.excluded.is_empty() {

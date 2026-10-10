@@ -27,6 +27,10 @@ is re-checked right before it happens and logged.
   smaller than `bytes` (simulator devices, copies made with `cp -c`). Missing or `null` when not
   measured (commands, other file systems). Totals (`reclaimable.safe` / `.review`, a plan's
   `frees_bytes`) use it where measured. Quote this number when telling the user what they gain.
+- `grew` — folders that grew since an earlier scan (`delta`, allocated like `bytes`). `private` is
+  the folder's own data, not shared with APFS clones; `mostly_shared: true` means most of the
+  growth is clones that took almost no new space (e.g. `XCTestDevices`: +60.9 GB, 0.2 GB own), so
+  do not present it as space that was used up.
 - `disk.free` — unused space (like `df`); warnings use it. `disk.available_incl_purgeable` also
   counts purgeable space macOS clears on demand, which is what Finder shows as available.
 - `action.kind: "manual"` — roomy will not remove it (e.g. apps); pass on `action.hint`.

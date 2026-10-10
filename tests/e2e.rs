@@ -830,7 +830,7 @@ const VOLATILE: &str = ".**.time, .**.scanned, .**.grew_since, .**.bytes, .**.si
     .**.review_text, .**.total_bytes, .**.total_text, .**.freed_bytes, .**.freed_text, \
     .**.safe_bytes, .**.review_bytes, .**.delta, .**.delta_text, .**.now, .**.n, .**.version, \
     .**.frees_bytes, .**.frees_text, .**.available_incl_purgeable, \
-    .**.available_incl_purgeable_text, .**.reclaimable_text";
+    .**.available_incl_purgeable_text, .**.reclaimable_text, .**.private, .**.private_text";
 
 /// Keys that are a number on a candidate but an object of totals in the report summary.
 const VOLATILE_IF_SCALAR: &str = ".**.reclaimable";

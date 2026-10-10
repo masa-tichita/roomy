@@ -395,12 +395,17 @@ fn draw_growth(f: &mut Frame, app: &App, area: Rect) {
             .iter()
             .take(area.height.saturating_sub(2) as usize)
             .map(|g| {
+                // Mostly APFS clones: say how little of it is new data.
+                let own = g
+                    .mostly_shared()
+                    .map(|b| format!(" {}", tf("tui.grew_own", &[("own", &fmt_bytes(b))])))
+                    .unwrap_or_default();
+                let room =
+                    (area.width.saturating_sub(14) as usize).saturating_sub(sys::width(&own));
                 Line::from(vec![
                     Span::styled(format!("{:>9} ", fmt_delta(g.delta)), th.bold(th.review)),
-                    Span::styled(
-                        short_path(&g.path, area.width.saturating_sub(14) as usize),
-                        th.fg(th.text),
-                    ),
+                    Span::styled(short_path(&g.path, room), th.fg(th.text)),
+                    Span::styled(own, th.fg(th.dim)),
                 ])
             })
             .collect(),

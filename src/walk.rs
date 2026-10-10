@@ -314,6 +314,34 @@ pub struct Growth {
     pub path: String,
     pub delta: i64,
     pub now: u64,
+    /// Bytes of the folder not shared with APFS clones (what removing it would free), measured
+    /// after the walk. None when not measured: scan roots, too many files, other file systems.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub private: Option<u64>,
+}
+
+impl Growth {
+    /// The folder's own data when most of the growth cannot be its own: copies made as APFS
+    /// clones (simulator devices, `cp -c`) count fully in `delta` but take almost no new space.
+    pub fn mostly_shared(&self) -> Option<u64> {
+        self.private
+            .filter(|&p| (p as f64) < 0.5 * self.delta as f64)
+    }
+}
+
+/// Measures [`Growth::private`] for the listed folders, smallest first, until `deadline`.
+pub fn measure_growth(growth: &mut [Growth], roots: &[String], deadline: Instant) {
+    let mut order: Vec<&mut Growth> = growth
+        .iter_mut()
+        .filter(|g| !roots.contains(&g.path))
+        .collect();
+    order.sort_by_key(|g| g.now);
+    for g in order {
+        if Instant::now() >= deadline {
+            break;
+        }
+        g.private = reclaimable(&[PathBuf::from(&g.path)], deadline);
+    }
 }
 
 /// Folders that grew by at least `threshold`. A parent is left out when one child explains most of
@@ -334,6 +362,7 @@ pub fn growth(prev: &Snapshot, cur: &Snapshot, threshold: u64) -> Vec<Growth> {
                 path: p.clone(),
                 delta,
                 now,
+                private: None,
             })
         })
         .collect();
@@ -550,6 +579,53 @@ mod tests {
             paths,
             ["/r", d, "/r/b", "/r/b/big", "/r/c", "/r/e", "/r/b/other"]
         );
+    }
+
+    #[test]
+    fn growth_of_clones_is_marked_mostly_shared() {
+        let g = |delta: i64, private| Growth {
+            path: "/r/XCTestDevices".into(),
+            delta,
+            now: 61_000_000_000,
+            private,
+        };
+        assert_eq!(
+            g(60_900_000_000, Some(235_000_000)).mostly_shared(),
+            Some(235_000_000)
+        );
+        assert_eq!(g(10_000_000_000, Some(9_000_000_000)).mostly_shared(), None);
+        assert_eq!(g(10_000_000_000, None).mostly_shared(), None);
+    }
+
+    #[test]
+    fn measure_growth_skips_roots_and_measures_clones() {
+        let d = tempfile::tempdir().unwrap();
+        let dir = d.path().canonicalize().unwrap();
+        let path = |s: &str| dir.join(s).to_string_lossy().into_owned();
+        fs::create_dir_all(dir.join("src")).unwrap();
+        fs::create_dir_all(dir.join("copy")).unwrap();
+        fs::write(dir.join("src/f"), vec![7u8; 8 << 20]).unwrap();
+        // An APFS clone, like `cp -c`: counts fully in a walk, takes no new space.
+        let status = std::process::Command::new("cp")
+            .args(["-c", &path("src/f"), &path("copy/f")])
+            .status()
+            .unwrap();
+        assert!(status.success());
+        let g = |p: &str| Growth {
+            path: path(p),
+            delta: 8 << 20,
+            now: 8 << 20,
+            private: None,
+        };
+        let mut growth = vec![g("copy"), g("")];
+        let root = path("");
+        measure_growth(
+            &mut growth,
+            &[root],
+            Instant::now() + std::time::Duration::from_secs(30),
+        );
+        assert!(growth[0].mostly_shared().is_some(), "{:?}", growth[0]);
+        assert_eq!(growth[1].private, None, "scan roots are not measured");
     }
 
     #[test]

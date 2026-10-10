@@ -51,8 +51,11 @@ expression: v
     {
       "delta": "[int]",
       "delta_text": "[string]",
+      "mostly_shared": false,
       "now": "[int]",
-      "path": "~/Projects/big"
+      "path": "~/Projects/big",
+      "private": "[int]",
+      "private_text": "[string]"
     }
   ],
   "grew_since": "[int]",
