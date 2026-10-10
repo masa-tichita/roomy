@@ -20,6 +20,8 @@ All notable changes are documented here. The format follows
 
 ### Fixed
 
+- Two scans within the same second no longer overwrite each other's snapshot, which made
+  growth and `top` deltas disappear.
 - End-to-end tests no longer send real notifications.
 
 - `status`, `scan`, `report`, `clean`, `top`, `history`, `rules`, `config`, `doctor` commands.

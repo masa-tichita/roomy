@@ -7,7 +7,7 @@ use crate::model::{Report, WalkInfo};
 use crate::state;
 use crate::sys::{self, expand};
 use crate::walk::{self, Sizer, Snapshot};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// `background`: started by the background service, not by the user. Throttles I/O and, without Full Disk
 /// Access, stays out of TCC-protected folders so no permission dialogs appear.
@@ -47,8 +47,7 @@ pub fn run(cfg: &Config, background: bool) -> anyhow::Result<Report> {
         .unwrap_or_default();
     let growth_since = prev.map(|p| p.time);
 
-    let name = chrono::Local::now().format("%Y%m%d-%H%M%S").to_string();
-    state::save(&state::snapshots_dir().join(format!("{name}.json")), &snap)?;
+    state::save(&snapshot_path(&state::snapshots_dir()), &snap)?;
     state::prune_snapshots(cfg.scan.keep_snapshots);
 
     let sizer = Sizer { snap };
@@ -82,6 +81,17 @@ pub fn run(cfg: &Config, background: bool) -> anyhow::Result<Report> {
     Ok(report)
 }
 
+/// A new, unused file name that sorts after every earlier snapshot. Milliseconds, plus a counter,
+/// because two scans can finish within the same second.
+fn snapshot_path(dir: &Path) -> PathBuf {
+    let stamp = chrono::Local::now().format("%Y%m%d-%H%M%S-%3f").to_string();
+    // A fixed-width counter keeps names sorting in creation order.
+    (0..1000)
+        .map(|n| dir.join(format!("{stamp}-{n:03}.json")))
+        .find(|p| !p.exists())
+        .unwrap_or_else(|| dir.join(format!("{stamp}.json")))
+}
+
 /// Newest saved snapshot that covered the same places (so the difference is real growth).
 fn previous_comparable(cur: &Snapshot) -> Option<Snapshot> {
     state::snapshot_files()
@@ -96,4 +106,24 @@ pub fn latest_snapshot() -> Snapshot {
         .first()
         .and_then(|p| state::load(p))
         .unwrap_or_default()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn snapshot_names_never_collide_and_keep_their_order() {
+        let d = tempfile::tempdir().unwrap();
+        let mut names = vec![];
+        for _ in 0..5 {
+            let p = snapshot_path(d.path());
+            std::fs::write(&p, "{}").unwrap();
+            names.push(p);
+        }
+        let mut sorted = names.clone();
+        sorted.sort();
+        sorted.dedup();
+        assert_eq!(sorted, names, "unique and in creation order");
+    }
 }
