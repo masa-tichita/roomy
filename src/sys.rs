@@ -279,6 +279,15 @@ pub fn os_version() -> String {
         .unwrap_or_default()
 }
 
+/// The Mac's processor as Apple tools name it, also when roomy itself runs under Rosetta.
+pub fn host_arch() -> &'static str {
+    if sysctl_int("hw.optional.arm64") == Some(1) {
+        "arm64"
+    } else {
+        "x86_64"
+    }
+}
+
 // ---- processes ----
 
 pub struct AppMem {

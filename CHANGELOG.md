@@ -6,6 +6,13 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- Scans no longer start the simulator service when every simulator's runtime and device type
+  are installed: roomy reads the device files itself and asks `xcrun simctl` only when a
+  simulator may be unavailable. Asking took 42 s on a GitHub macOS runner with 17 Xcode
+  versions (#2).
+
 ## [0.1.0] - 2026-10-10
 
 First release.

@@ -113,7 +113,7 @@ note = "ビルド中間生成物。次回ビルドで再生成"   # 組み込み
 | versioned-dirs | バージョンごとに増えるフォルダ（Codex の releases 等）。最新 N 件・`current` の参照先・実行中のものを残す |
 | editor-obsolete | VS Code 系（Code / Cursor / Windsurf / Antigravity 等）の `extensions/.obsolete` に載った旧拡張 |
 | xcode-device-support | `* DeviceSupport` のうち各デバイスの最新以外 |
-| xcode-sims | `simctl` で利用不可になったシミュレータ |
+| xcode-sims | `simctl` で利用不可になったシミュレータ。CoreSimulator の起動はランタイムが多いと数十秒かかるため、まず各デバイスの `device.plist` とインストール済みランタイム・デバイスタイプを直接読み、全デバイスが確実に利用可能なら `simctl` を呼ばない。少しでも疑わしければ `simctl` に聞く。削除直前の再検証は常に `simctl` |
 | docker | デーモンが**既に動いている場合だけ**問い合わせる（CLI 実行で Docker/OrbStack を起動させない） |
 | apps | 一定サイズ以上で最終使用（Spotlight の `kMDItemLastUsedDate`）が古いアプリ。削除はせずアンインストーラ案内のみ |
 | downloads | 古いファイル。review・ゴミ箱のみ（Downloads は TCC 保護。§7） |
