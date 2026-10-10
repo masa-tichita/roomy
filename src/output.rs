@@ -64,7 +64,17 @@ pub fn status(cfg: &Config, json: bool) -> bool {
     } else {
         s.green(&free)
     };
-    let w = 10;
+    // Label column: as wide as the widest label in the reader's language.
+    let w = sys::column_width(
+        [
+            "status.disk",
+            "status.memory",
+            "status.top",
+            "status.last_scan",
+            "status.agent",
+        ]
+        .map(t),
+    );
     println!(
         "{} {}",
         s.bold(crate::app::NAME),
@@ -172,13 +182,7 @@ pub fn report(r: &Report, verbose: bool) {
     if r.candidates.is_empty() {
         println!("  {}", t("report.none"));
     }
-    let catw = r
-        .candidates
-        .iter()
-        .map(|c| unicode_width::UnicodeWidthStr::width(c.category.render().as_str()))
-        .max()
-        .unwrap_or(0)
-        .min(14);
+    let catw = sys::column_width(r.candidates.iter().map(|c| c.category.render())).min(14);
     for (i, c) in r.candidates.iter().enumerate() {
         println!(
             "  {}  {}  {}  {}  {}",
@@ -333,6 +337,8 @@ pub fn rules(cfg: &Config, json: bool) {
         return;
     }
     let s = Sty::new();
+    // User rules can have long ids, so the column fits the longest one.
+    let idw = sys::column_width(rules.iter().map(|r| r.id.as_str()));
     for r in &rules {
         let off = cfg.disabled_rules.contains(&r.id);
         let safety = cfg
@@ -342,7 +348,7 @@ pub fn rules(cfg: &Config, json: bool) {
             .unwrap_or(r.safety);
         let line = format!(
             "{}  {}  {}",
-            pad(&r.id, 26),
+            pad(&r.id, idw),
             safety_label(&s, safety),
             r.title.get()
         );
@@ -354,9 +360,10 @@ pub fn rules(cfg: &Config, json: bool) {
                 line
             }
         );
+        // Paths go under the title: id, two spaces, safety label (8), two spaces.
         println!(
             "{}",
-            s.dim(&format!("{}{}", " ".repeat(38), r.paths.join(", ")))
+            s.dim(&format!("{}{}", " ".repeat(idw + 12), r.paths.join(", ")))
         );
     }
     let errs = crate::rules::validate(&rules);

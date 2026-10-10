@@ -2,7 +2,7 @@
 
 use crate::app;
 use crate::config;
-use crate::i18n::{Lang, Msg, m, mf, t};
+use crate::i18n::{self, Lang, Msg, m, mf, t, t_in};
 use crate::model::Report;
 use crate::output::print_json;
 use crate::state;
@@ -202,6 +202,7 @@ pub fn run(json: bool) -> usize {
         sys::os_version(),
         std::env::consts::ARCH
     );
+    let width = label_width(&checks, i18n::lang());
     for c in &checks {
         let mark = match c.level {
             Level::Ok => s.green("✓"),
@@ -210,9 +211,50 @@ pub fn run(json: bool) -> usize {
         };
         println!(
             "  {mark} {}  {}",
-            sys::pad(&t(c.label), 18),
+            sys::pad(&t(c.label), width),
             c.detail.render()
         );
     }
     failures
+}
+
+/// The label column fits the widest label in the reader's language ("フルディスクアクセス" is
+/// 20 columns, "Background service" 18).
+fn label_width(checks: &[Check], lang: Lang) -> usize {
+    sys::column_width(checks.iter().map(|c| t_in(lang, c.label)))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn all_labels() -> Vec<Check> {
+        [
+            "doctor.config",
+            "doctor.rules",
+            "doctor.state",
+            "doctor.fda",
+            "doctor.tools",
+            "doctor.notify",
+            "doctor.agent",
+            "doctor.last_agent",
+            "doctor.last_scan",
+        ]
+        .into_iter()
+        .map(|label| check("x", label, Level::Ok, Msg::plain("")))
+        .collect()
+    }
+
+    #[test]
+    fn label_column_fits_the_widest_label() {
+        let checks = all_labels();
+        assert_eq!(label_width(&checks, Lang::Ja), 20, "フルディスクアクセス");
+        assert_eq!(label_width(&checks, Lang::En), 18, "Background service");
+        for lang in [Lang::En, Lang::Ja] {
+            let w = label_width(&checks, lang);
+            for c in &checks {
+                assert_eq!(sys::width(&sys::pad(&t_in(lang, c.label), w)), w);
+            }
+        }
+    }
 }

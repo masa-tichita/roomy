@@ -544,15 +544,27 @@ impl Sty {
     }
 }
 
-/// Pads to a display width (CJK characters are two columns wide).
-pub fn pad(s: &str, width: usize) -> String {
-    let w = unicode_width::UnicodeWidthStr::width(s);
-    format!("{s}{}", " ".repeat(width.saturating_sub(w)))
+/// Columns a string takes in a terminal (CJK characters are two columns wide).
+pub fn width(s: &str) -> usize {
+    unicode_width::UnicodeWidthStr::width(s)
 }
 
-pub fn pad_left(s: &str, width: usize) -> String {
-    let w = unicode_width::UnicodeWidthStr::width(s);
-    format!("{}{s}", " ".repeat(width.saturating_sub(w)))
+/// Width of a column that fits every item, for labels whose length depends on the language.
+pub fn column_width<S: AsRef<str>>(items: impl IntoIterator<Item = S>) -> usize {
+    items
+        .into_iter()
+        .map(|s| width(s.as_ref()))
+        .max()
+        .unwrap_or(0)
+}
+
+/// Pads to a display width.
+pub fn pad(s: &str, w: usize) -> String {
+    format!("{s}{}", " ".repeat(w.saturating_sub(width(s))))
+}
+
+pub fn pad_left(s: &str, w: usize) -> String {
+    format!("{}{s}", " ".repeat(w.saturating_sub(width(s))))
 }
 
 #[cfg(test)]
@@ -600,5 +612,15 @@ mod tests {
     fn padding_counts_wide_chars() {
         assert_eq!(pad("安全", 6), "安全  ");
         assert_eq!(pad_left("1 GB", 6), "  1 GB");
+    }
+
+    #[test]
+    fn column_fits_the_widest_label() {
+        assert_eq!(
+            column_width(["状態フォルダ", "フルディスクアクセス", "Rules"]),
+            20
+        );
+        assert_eq!(column_width(["Disk", "Top memory"]), 10);
+        assert_eq!(column_width(Vec::<String>::new()), 0);
     }
 }
