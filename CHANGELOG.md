@@ -6,53 +6,58 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
-### Added
+## [0.1.0] - 2026-10-10
 
-- `[service] notifications = false` mutes the background service without stopping it;
-  `[service] memory_alerts = false` keeps only disk alerts. `ROOMY_NO_NOTIFY=1` mutes everything.
-- Worktrees in folders another tool manages can be removed through that tool
-  (`[[worktrees.managed]] remove = ["orca", "worktree", "rm", "--worktree", "path:{path}"]`).
-- Worktree evidence shows a merged pull request (via `gh`), which catches squash merges.
-- Release workflow: universal binary (arm64 + x86_64), ad-hoc signed, with build provenance,
-  published to GitHub Releases and to the Homebrew tap (`brew install masa-tichita/tap/roomy`,
-  `brew services start roomy`).
+First release.
 
-### Changed
+### Finding what to remove
 
-- A memory "warning" is reported only when it lasts two checks in a row (critical: at once).
+- One parallel walk records every large folder; the next scan shows what grew, pointing at the
+  folder that caused it.
+- Detectors for git worktrees (clean, pushed, idle, not in use; files outside Git listed;
+  merged pull requests via `gh`, which catches squash merges), Xcode leftovers, package and app
+  caches, old versions of self-updating tools, obsolete editor extensions, Docker, large unused
+  apps and old downloads.
+- Data-driven rules (`rules/builtin.toml`) that users extend, override or disable;
+  `disabled_detectors` turns off built-in detectors.
+- What a removal really frees: the bytes not shared with APFS clones. Sizes, totals and
+  ordering lead with it; the allocated size is shown alongside when clearly larger.
+- Finder-style available space (including purgeable) next to free space.
 
-### Fixed
+### Removing safely
 
-- Two scans within the same second no longer overwrite each other's snapshot, which made
-  growth and `top` deltas disappear.
-- End-to-end tests no longer send real notifications.
+- Nothing is removed automatically. `clean` (or `c` in the dashboard) re-checks every
+  candidate right before removal, refuses paths outside home, protected folders and symbolic
+  links, prefers each tool's own cleanup command, moves user data to the Trash, and logs every
+  removal.
+- Worktrees managed by another tool (e.g. Orca) can be removed through that tool.
 
-- `status`, `scan`, `report`, `clean`, `top`, `history`, `rules`, `config`, `doctor` commands.
-- Interactive dashboard (`roomy` in a terminal, or `roomy ui`) with candidate selection and removal.
-- Detectors for git worktrees, Xcode leftovers, package caches, app caches, old tool versions,
-  obsolete editor extensions, Docker, unused large apps and old downloads.
-- Data-driven rules (`rules/builtin.toml`) with user rules, overrides and disabling.
-- Growth detection between scans.
-- Background service (`roomy service install`) with notifications for low or fast-dropping free
-  space, memory pressure and swap, plus a daily scan.
-- Safety: re-check before removal, path guard, audit log, Trash for user data.
-- English and Japanese messages; JSON output with a schema version.
-- AI agent support: compact `--json` summaries, `explain`, JSON plans and results for `clean`,
-  guard rails for unattended removal (`--allow-review`, `[clean] max_unattended_gb`),
-  `roomy guide` (agent instructions, Claude Code skill, AGENTS.md snippet) and an MCP server
-  (`roomy mcp`).
-- `disabled_detectors` turns off built-in detectors (for example `["docker"]`).
-- Shell completions (`roomy completions <shell>`) and manual pages (`roomy man`), for packaging.
-- What a removal really frees: for candidates that remove paths, roomy measures the bytes not
-  shared with APFS clones (`ATTR_CMNEXT_PRIVATESIZE`). Sizes, totals and ordering lead with that
-  number; the allocated size is shown alongside when it is clearly larger (`reclaimable` in JSON).
-- Finder-style available space including purgeable space in `status`, the dashboard and JSON
-  (`disk.available_incl_purgeable`); thresholds still use free space.
+### Using it
 
-### Fixed
+- Commands: `status`, `scan`, `report`, `explain`, `clean`, `top`, `history`, `rules`,
+  `config`, `doctor`, `service`, `guide`, `mcp`, `completions`, `man`.
+- Interactive dashboard (`roomy` in a terminal): candidates, growth, free-space trend, memory,
+  a folder explorer, selection and removal.
+- Background service (`brew services start roomy` or `roomy service install`): checks every 15
+  minutes, notifies on low or fast-dropping free space, sustained memory pressure and swap, scans
+  daily; quiet hours, `notifications = false` and `memory_alerts = false` to tone it down.
+- English and Japanese.
 
-- `doctor`, `status` and `rules` size their label column to the widest label, so long Japanese
-  labels (フルディスクアクセス, 最終スキャン) no longer push their line out of alignment.
-- Scans no longer measure app folders the scan did not walk (outside `[scan] roots` or in
-  `exclude`), nor app folders the walk already found small; `lsof` runs only when a worktree is
-  found.
+### For AI agents
+
+- Versioned, English, compact `--json` on every reporting command; summaries first, details via
+  `explain`; JSON plans and results for `clean`; errors as JSON. The shape is pinned by snapshot
+  tests.
+- Guard rails for unattended removal: "review" candidates need `--allow-review`, one run is capped
+  by `[clean] max_unattended_gb`.
+- `roomy mcp`: a Model Context Protocol server with the same operations (`--read-only` without
+  removal); `roomy guide` for instructions, a Claude Code skill and an AGENTS.md snippet.
+
+### Distribution
+
+- Universal binary (Apple Silicon and Intel, macOS 13+), ad-hoc signed, with build provenance,
+  on GitHub Releases and the Homebrew tap (`brew install masa-tichita/tap/roomy`), including shell
+  completions and manual pages.
+
+[Unreleased]: https://github.com/masa-tichita/roomy/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/masa-tichita/roomy/releases/tag/v0.1.0
