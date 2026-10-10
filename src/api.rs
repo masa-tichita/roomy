@@ -59,6 +59,7 @@ pub fn status(cfg: &Config) -> (Value, bool) {
             "review_bytes": r.total(Safety::Review),
             "candidates": r.candidates.len(),
         })),
+        "outside": outside_json(&crate::memory::outside_space()),
         "alarming": alarming,
     });
     (v, alarming)
@@ -327,4 +328,41 @@ pub fn top_from_state(path: Option<&str>, n: usize) -> Result<Value, String> {
         None => sys::home(),
     };
     Ok(top(&snap, prev.as_ref(), &dir, n))
+}
+
+// ---- memory ----
+
+pub fn memory(holders: &[crate::memory::Holder], outside: &[crate::memory::Outside]) -> Value {
+    let mem = sys::mem();
+    json!({
+        "schema": crate::app::SCHEMA,
+        "memory": {
+            "total": mem.total,
+            "free_pct": mem.free_pct,
+            "pressure": match mem.pressure { 1 => "normal", 2 => "warning", 4 => "critical", _ => "unknown" },
+            "swap_used": mem.swap_used,
+            "swap_text": sys::fmt_mem(mem.swap_used),
+        },
+        "outside": outside_json(outside),
+        "holders": holders.iter().enumerate().map(|(i, h)| json!({
+            "n": i + 1,
+            "id": h.id,
+            "name": h.name,
+            "kind": if matches!(h.kind, crate::memory::Kind::App { .. }) { "app" } else { "process" },
+            "compressed": h.compressed,
+            "compressed_text": sys::fmt_mem(h.compressed),
+            "resident": h.resident,
+            "pids": h.pids,
+            "detail": h.detail,
+            "protected": h.protected.as_ref().map(en),
+        })).collect::<Vec<_>>(),
+        "hint": "Quitting an app releases its swapped memory; restarting the Mac releases all of it. Ask the user before quitting anything (roomy memory quit <n>).",
+    })
+}
+
+pub fn outside_json(outside: &[crate::memory::Outside]) -> Vec<Value> {
+    outside
+        .iter()
+        .map(|o| json!({ "name": o.name, "kind": o.kind, "bytes": o.bytes, "size": fmt_bytes(o.bytes) }))
+        .collect()
 }

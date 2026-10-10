@@ -24,6 +24,7 @@ expression: v
     "swap_used": "[int]",
     "total": "[int]"
   },
+  "outside": "[list]",
   "schema": 1,
   "top_apps": "[list of {name, processes, rss}]"
 }

@@ -103,6 +103,19 @@ brew services start roomy  # background checks and a daily scan (or: roomy servi
 roomy doctor               # permissions, tools, agent, config
 ```
 
+## Memory and swap
+
+Swap is the memory of running apps written to disk, so it uses free space too (often 10–20 GB
+after heavy work). It cannot be deleted; quitting the apps that hold it lets macOS shrink it.
+
+```sh
+roomy memory                 # swap, space outside home, apps holding swapped memory
+roomy memory quit 1 3        # quit them (asks first; apps get the normal Quit)
+```
+
+The dashboard has the same list in its Memory tab (`x` to quit). Restarting the Mac releases all
+swap at once.
+
 ## Full Disk Access
 
 roomy works without it. Without Full Disk Access, **background** scans skip folders macOS

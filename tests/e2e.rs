@@ -816,6 +816,14 @@ fn list_of_objects() -> Redaction {
     })
 }
 
+/// A list whose length and entries depend on the machine (APFS volumes, …): only its type is pinned.
+fn any_list() -> Redaction {
+    insta::dynamic_redaction(|v: Content, p: ContentPath| {
+        assert!(v.as_slice().is_some(), "{p}: not a list");
+        "[list]".to_string()
+    })
+}
+
 /// Keys whose values are volatile wherever they appear.
 const VOLATILE: &str = ".**.time, .**.scanned, .**.grew_since, .**.bytes, .**.size, .**.total, \
     .**.free, .**.free_text, .**.free_pct, .**.swap_used, .**.safe, .**.safe_text, .**.review, \
@@ -840,6 +848,7 @@ fn snapshot(name: &str, v: &serde_json::Value) {
         typed(),
     );
     s.add_redaction(".top_apps", list_of_objects());
+    s.add_redaction(".outside", any_list());
     s.add_redaction(".checks[].level", one_of(&["ok", "warn", "fail"]));
     s.bind(|| insta::assert_json_snapshot!(name, v));
 }
@@ -973,4 +982,36 @@ fn closed_pipe_is_not_a_panic() {
         assert!(!err.contains("panicked"), "{args:?}: {err}");
         assert_ne!(out.status.code(), Some(101), "{args:?}");
     }
+}
+
+#[test]
+fn memory_lists_holders_and_never_offers_its_own_session() {
+    let sb = Sandbox::new(BASE);
+    let v = json(&sb.roomy(&["memory", "--json"]));
+    assert_eq!(v["schema"], 1);
+    assert!(v["memory"]["swap_used"].is_u64());
+    assert!(v["outside"].is_array());
+    let me = std::process::id();
+    for h in v["holders"].as_array().unwrap() {
+        assert!(h["kind"] == "app" || h["kind"] == "process", "{h}");
+        let pids: Vec<u64> = h["pids"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(serde_json::Value::as_u64)
+            .collect();
+        if pids.contains(&u64::from(me)) {
+            assert!(
+                h["protected"].is_string(),
+                "the test process itself must be protected: {h}"
+            );
+        }
+    }
+    // quitting needs a target and refuses what is not listed
+    assert!(!sb.roomy(&["memory", "quit"]).status.success());
+    assert!(
+        !sb.roomy(&["memory", "quit", "no-such-app-xyz", "--yes"])
+            .status
+            .success()
+    );
 }

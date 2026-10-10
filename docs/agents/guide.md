@@ -43,6 +43,9 @@ is re-checked right before it happens and logged.
 
 - `roomy top [path] --json` — largest folders from the last scan, no rescan.
 - `roomy history --json` — lowest free space per day.
+- `roomy memory --json` — swap in use, space outside home (swap files, simulator runtimes) and the
+  apps holding compressed or swapped memory. Swap is freed by quitting those apps (the user runs
+  `roomy memory quit <n>`) or by restarting; it is not a file to delete.
 - `roomy doctor --json` — permissions, tools, background service.
 - Exit codes: 0 ok, 1 error or partial failure, 2 usage error, 3 over a threshold
   (`status --exit-code`).

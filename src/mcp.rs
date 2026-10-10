@@ -173,6 +173,14 @@ fn tools(read_only_server: bool) -> Vec<Value> {
             false,
         ),
         tool(
+            "roomy_memory",
+            "Memory and swap",
+            "Swap in use, space used outside the home folder (swap files, simulator runtimes), and the apps holding the most compressed or swapped memory. Read-only: suggest quitting apps to the user; they quit them with `roomy memory quit`.",
+            &none,
+            true,
+            false,
+        ),
+        tool(
             "roomy_history",
             "Free space history",
             "Lowest free space per day for the last 14 days.",
@@ -259,6 +267,10 @@ fn run_tool(cfg: &Config, read_only: bool, name: &str, args: &Value) -> Result<V
             let n = args["n"].as_u64().unwrap_or(15) as usize;
             api::top_from_state(args["path"].as_str(), n)
         }
+        "roomy_memory" => Ok(api::memory(
+            &crate::memory::holders(15),
+            &crate::memory::outside_space(),
+        )),
         "roomy_history" => Ok(api::history(&state::read_lines(&state::history_path()), 14)),
         "roomy_doctor" => Ok(crate::doctor::json().0),
         "roomy_plan_clean" | "roomy_clean" => {

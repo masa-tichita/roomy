@@ -110,6 +110,21 @@ expression: "&replies[1]"
           "openWorldHint": false,
           "readOnlyHint": true
         },
+        "description": "Swap in use, space used outside the home folder (swap files, simulator runtimes), and the apps holding the most compressed or swapped memory. Read-only: suggest quitting apps to the user; they quit them with `roomy memory quit`.",
+        "inputSchema": {
+          "properties": {},
+          "type": "object"
+        },
+        "name": "roomy_memory",
+        "title": "Memory and swap"
+      },
+      {
+        "annotations": {
+          "destructiveHint": false,
+          "idempotentHint": true,
+          "openWorldHint": false,
+          "readOnlyHint": true
+        },
         "description": "Lowest free space per day for the last 14 days.",
         "inputSchema": {
           "properties": {},

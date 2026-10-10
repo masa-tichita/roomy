@@ -6,6 +6,14 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Memory cleanup: `roomy memory` (and a Memory tab in the dashboard, and an MCP tool) shows swap,
+  space used outside the home folder (swap files, simulator runtimes) and the apps holding
+  compressed or swapped memory; `roomy memory quit` (or `x` in the tab) quits them after
+  confirmation, apps with the normal Quit. System processes and roomy's own session are never
+  offered. `status` shows swap and space outside home.
+
 ## [0.2.0] - 2026-10-11
 
 ### Added

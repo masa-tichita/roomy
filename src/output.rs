@@ -70,6 +70,7 @@ pub fn status(cfg: &Config, json: bool) -> bool {
             "status.disk",
             "status.memory",
             "status.top",
+            "status.outside",
             "status.last_scan",
             "status.agent",
         ]
@@ -127,6 +128,17 @@ pub fn status(cfg: &Config, json: bool) -> bool {
         .map(|a| format!("{} {}", a.name, sys::fmt_mem(a.rss)))
         .collect();
     println!("{} {}", pad(&t("status.top"), w), top.join(", "));
+    let outside = crate::memory::outside_space();
+    if !outside.is_empty() {
+        let parts: Vec<String> = outside
+            .iter()
+            .map(|o| format!("{} {}", outside_label(o), fmt_bytes(o.bytes)))
+            .collect();
+        println!("{} {}", pad(&t("status.outside"), w), parts.join(" · "));
+    }
+    if mem.swap_used >= 1 << 30 {
+        println!("{} {}", pad("", w), s.dim(&t("status.swap_hint")));
+    }
     match &report {
         Some(r) => println!(
             "{} {}",
@@ -436,4 +448,63 @@ pub fn explain(r: &Report, target: &str, max_paths: usize) {
         Action::Command { argv, .. } => println!("    {}", s.dim(&argv.join(" "))),
         Action::Manual { hint } => println!("    {}", s.dim(&hint.render())),
     }
+}
+
+fn outside_label(o: &crate::memory::Outside) -> String {
+    match o.kind {
+        "swap" => t("outside.swap"),
+        "simulator_runtime" => tf("outside.simulator", &[("name", &o.name)]),
+        _ => o.name.clone(),
+    }
+}
+
+/// `roomy memory` for people.
+pub fn memory(holders: &[crate::memory::Holder], outside: &[crate::memory::Outside]) {
+    let s = Sty::new();
+    let mem = sys::mem();
+    println!(
+        "{}",
+        s.bold(&tf(
+            "memory.header",
+            &[
+                ("swap", &sys::fmt_mem(mem.swap_used)),
+                ("pressure", &sys::pressure_label_i18n(mem.pressure)),
+                (
+                    "free",
+                    &mem.free_pct.map_or_else(|| "?".into(), |p| format!("{p}%"))
+                ),
+            ]
+        ))
+    );
+    for o in outside {
+        println!(
+            "  {}  {}",
+            pad_left(&fmt_bytes(o.bytes), 9),
+            outside_label(o)
+        );
+    }
+    println!();
+    println!("{}", s.bold(&t("memory.holders")));
+    if holders.is_empty() {
+        println!("  {}", t("memory.none"));
+    }
+    let namew = sys::column_width(holders.iter().map(|h| h.name.clone())).min(28);
+    for (i, h) in holders.iter().enumerate() {
+        let size = pad_left(&sys::fmt_mem(h.compressed), 8);
+        let name = pad(&h.name, namew);
+        match &h.protected {
+            None => println!("  {}  {size}  {name}", pad_left(&(i + 1).to_string(), 2)),
+            Some(why) => println!(
+                "  {}  {size}  {}  {}",
+                pad_left("-", 2),
+                s.dim(&name),
+                s.dim(&why.render())
+            ),
+        }
+        if let Some(d) = &h.detail {
+            println!("{}{}", " ".repeat(16), s.dim(d));
+        }
+    }
+    println!();
+    println!("{}", s.dim(&t("memory.next")));
 }

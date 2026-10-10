@@ -29,6 +29,7 @@ pub use theme::Theme;
 pub enum Tab {
     Overview,
     Folders,
+    Memory,
 }
 
 pub enum Mode {
@@ -38,6 +39,8 @@ pub enum Mode {
     /// Waiting for a background job; the text says what for.
     Working(String, Instant),
     Confirm(Plan),
+    /// Asking whether to quit an app that holds swapped memory.
+    ConfirmQuit(crate::memory::Holder),
     Message(Vec<String>),
 }
 
@@ -45,6 +48,8 @@ enum Job {
     Scanned(Result<Report, String>),
     Planned(Plan),
     Cleaned(Result<(Outcome, Report), String>),
+    Memory(Vec<crate::memory::Holder>, Vec<crate::memory::Outside>),
+    Quit(Vec<String>),
 }
 
 pub struct App {
@@ -64,6 +69,11 @@ pub struct App {
     pub prev_snap: Option<Snapshot>,
     pub folder: PathBuf,
     pub folder_table: TableState,
+    /// Memory tab: who holds compressed or swapped memory, refreshed in the background.
+    pub holders: Vec<crate::memory::Holder>,
+    pub outside: Vec<crate::memory::Outside>,
+    pub holders_at: Option<Instant>,
+    pub memory_table: TableState,
     jobs: Option<Receiver<Job>>,
     last_refresh: Instant,
     last_apps: Instant,
@@ -82,6 +92,11 @@ pub fn run(cfg: &Config) -> anyhow::Result<()> {
 pub fn render_text(cfg: &Config, width: u16, height: u16, tab: Tab) -> String {
     let mut app = App::new(cfg.clone());
     app.tab = tab;
+    if tab == Tab::Memory {
+        app.holders = crate::memory::holders(30);
+        app.outside = crate::memory::outside_space();
+        app.holders_at = Some(Instant::now());
+    }
     let mut terminal = ratatui::Terminal::new(ratatui::backend::TestBackend::new(width, height))
         .expect("test backend");
     let _ = terminal.draw(|f| view::draw(f, &mut app));
@@ -121,6 +136,10 @@ impl App {
             prev_snap: None,
             folder: sys::home(),
             folder_table: TableState::default().with_selected(Some(0)),
+            holders: vec![],
+            outside: vec![],
+            holders_at: None,
+            memory_table: TableState::default().with_selected(Some(0)),
             jobs: None,
             last_refresh: Instant::now(),
             last_apps: Instant::now(),
@@ -311,6 +330,23 @@ impl App {
                 self.mode = Mode::Message(lines);
             }
             Job::Scanned(Err(e)) | Job::Cleaned(Err(e)) => self.mode = Mode::Message(vec![e]),
+            Job::Memory(holders, outside) => {
+                self.holders = holders;
+                self.outside = outside;
+                self.holders_at = Some(Instant::now());
+                let n = self.holders.len();
+                let i = self
+                    .memory_table
+                    .selected()
+                    .unwrap_or(0)
+                    .min(n.saturating_sub(1));
+                self.memory_table.select(Some(i));
+            }
+            Job::Quit(lines) => {
+                self.holders_at = None;
+                self.mem = sys::mem();
+                self.mode = Mode::Message(lines);
+            }
         }
     }
 
@@ -336,6 +372,14 @@ impl App {
                 }
             }
             Mode::Details | Mode::Help | Mode::Message(_) => self.mode = Mode::Normal,
+            Mode::ConfirmQuit(_) => match k.code {
+                KeyCode::Char('y' | 'Y') => {
+                    if let Mode::ConfirmQuit(h) = std::mem::replace(&mut self.mode, Mode::Normal) {
+                        self.start_quit(h);
+                    }
+                }
+                _ => self.mode = Mode::Normal,
+            },
             Mode::Confirm(_) => match k.code {
                 KeyCode::Char('y' | 'Y') => {
                     if let Mode::Confirm(plan) = std::mem::replace(&mut self.mode, Mode::Normal) {
@@ -352,19 +396,26 @@ impl App {
     }
 
     fn on_normal_key(&mut self, code: KeyCode) {
+        if self.tab == Tab::Memory && self.on_memory_key(code) {
+            return;
+        }
         match code {
             KeyCode::Char('q') | KeyCode::Esc => self.quit = true,
             KeyCode::Char('?') => self.mode = Mode::Help,
             KeyCode::Char('r') => self.start_scan(),
-            KeyCode::Tab | KeyCode::BackTab => {
-                self.tab = if self.tab == Tab::Overview {
-                    Tab::Folders
-                } else {
-                    Tab::Overview
-                };
-            }
-            KeyCode::Char('1') => self.tab = Tab::Overview,
-            KeyCode::Char('2') => self.tab = Tab::Folders,
+            KeyCode::Tab => self.switch_tab(match self.tab {
+                Tab::Overview => Tab::Folders,
+                Tab::Folders => Tab::Memory,
+                Tab::Memory => Tab::Overview,
+            }),
+            KeyCode::BackTab => self.switch_tab(match self.tab {
+                Tab::Overview => Tab::Memory,
+                Tab::Folders => Tab::Overview,
+                Tab::Memory => Tab::Folders,
+            }),
+            KeyCode::Char('1') => self.switch_tab(Tab::Overview),
+            KeyCode::Char('2') => self.switch_tab(Tab::Folders),
+            KeyCode::Char('3') => self.switch_tab(Tab::Memory),
             _ if self.tab == Tab::Folders => self.on_folder_key(code),
             KeyCode::Down | KeyCode::Char('j') => self.table.select_next(),
             KeyCode::Up | KeyCode::Char('k') => self.table.select_previous(),
@@ -407,6 +458,85 @@ impl App {
             _ => {}
         }
         self.clamp_selection();
+    }
+
+    fn switch_tab(&mut self, tab: Tab) {
+        self.tab = tab;
+        if tab == Tab::Memory
+            && self
+                .holders_at
+                .is_none_or(|t| t.elapsed() > Duration::from_secs(15))
+        {
+            self.refresh_memory();
+        }
+    }
+
+    fn refresh_memory(&mut self) {
+        if self.busy() {
+            return;
+        }
+        self.spawn(t("tui.memory_checking"), || {
+            Job::Memory(crate::memory::holders(30), crate::memory::outside_space())
+        });
+    }
+
+    fn start_quit(&mut self, h: crate::memory::Holder) {
+        if self.busy() {
+            return;
+        }
+        let label = crate::i18n::tf("tui.memory_quitting", &[("name", &h.name)]);
+        self.spawn(label, move || {
+            let line = match crate::memory::quit(&h) {
+                crate::memory::QuitOutcome::Quit => {
+                    format!(
+                        "✓ {}",
+                        crate::i18n::tf("memory.quit_done", &[("name", &h.name)])
+                    )
+                }
+                crate::memory::QuitOutcome::Asked => {
+                    format!(
+                        "… {}",
+                        crate::i18n::tf("memory.quit_asked", &[("name", &h.name)])
+                    )
+                }
+                crate::memory::QuitOutcome::Failed(e) => format!("✗ {}: {e}", h.name),
+            };
+            let swap = crate::i18n::tf(
+                "memory.swap_now",
+                &[("swap", &sys::fmt_mem(sys::mem().swap_used))],
+            );
+            Job::Quit(vec![line, String::new(), swap])
+        });
+    }
+
+    /// Keys of the memory tab; false when the key is not for this tab.
+    fn on_memory_key(&mut self, code: KeyCode) -> bool {
+        match code {
+            KeyCode::Down | KeyCode::Char('j') => self.memory_table.select_next(),
+            KeyCode::Up | KeyCode::Char('k') => self.memory_table.select_previous(),
+            KeyCode::Char('r') => self.refresh_memory(),
+            KeyCode::Char('x' | 'c') => {
+                if let Some(h) = self
+                    .memory_table
+                    .selected()
+                    .and_then(|i| self.holders.get(i))
+                {
+                    self.mode = match &h.protected {
+                        Some(why) => Mode::Message(vec![format!("{}: {}", h.name, why.render())]),
+                        None => Mode::ConfirmQuit(h.clone()),
+                    };
+                }
+            }
+            _ => return false,
+        }
+        let n = self.holders.len();
+        let i = self
+            .memory_table
+            .selected()
+            .unwrap_or(0)
+            .min(n.saturating_sub(1));
+        self.memory_table.select(Some(i));
+        true
     }
 
     fn on_folder_key(&mut self, code: KeyCode) {

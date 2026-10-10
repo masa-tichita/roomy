@@ -8,6 +8,7 @@ mod guard;
 mod guide;
 mod i18n;
 mod mcp;
+mod memory;
 mod model;
 mod output;
 mod rules;
@@ -46,6 +47,9 @@ enum Cmd {
         /// With --print: show the folders tab
         #[arg(long, hide = true)]
         folders: bool,
+        /// With --print: show the memory tab
+        #[arg(long, hide = true)]
+        memory: bool,
     },
     /// Free space, memory pressure, swap, top memory users, last scan
     Status {
@@ -128,6 +132,17 @@ enum Cmd {
         #[arg(long)]
         read_only: bool,
     },
+    /// Swap, and the apps holding compressed or swapped memory; quit them to free it
+    #[command(alias = "mem")]
+    Memory {
+        #[command(subcommand)]
+        action: Option<MemoryCmd>,
+        #[arg(long)]
+        json: bool,
+        /// How many to list
+        #[arg(short, default_value_t = 15)]
+        n: usize,
+    },
     /// Largest folders from the last scan (no disk walk)
     Top {
         path: Option<String>,
@@ -190,11 +205,23 @@ impl Cmd {
             | Cmd::Top { json, .. }
             | Cmd::History { json, .. }
             | Cmd::Doctor { json }
-            | Cmd::Rules { json } => *json,
+            | Cmd::Rules { json }
+            | Cmd::Memory { json, .. } => *json,
             Cmd::Mcp { .. } => true,
             _ => false,
         }
     }
+}
+
+#[derive(Subcommand)]
+enum MemoryCmd {
+    /// Quit apps or processes by number, name or id (asks first; apps get the normal Quit)
+    Quit {
+        targets: Vec<String>,
+        /// Do not ask for confirmation
+        #[arg(short, long)]
+        yes: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -238,6 +265,7 @@ fn main() -> ExitCode {
             Cmd::Ui {
                 print: None,
                 folders: false,
+                memory: false,
             }
         } else {
             Cmd::Status {
@@ -291,12 +319,15 @@ fn run(cmd: Cmd, cfg: &config::Config) -> anyhow::Result<u8> {
         Cmd::Ui {
             print: Some(size),
             folders,
+            memory,
         } => {
             let (w, h) = size
                 .split_once('x')
                 .and_then(|(w, h)| Some((w.parse().ok()?, h.parse().ok()?)))
                 .unwrap_or((120, 36));
-            let tab = if folders {
+            let tab = if memory {
+                tui::Tab::Memory
+            } else if folders {
                 tui::Tab::Folders
             } else {
                 tui::Tab::Overview
@@ -416,6 +447,24 @@ fn run(cmd: Cmd, cfg: &config::Config) -> anyhow::Result<u8> {
             mcp::serve(cfg, read_only)?;
             Ok(0)
         }
+        Cmd::Memory {
+            action: None,
+            json,
+            n,
+        } => {
+            let holders = memory::holders(n);
+            let outside = memory::outside_space();
+            if json {
+                output::print_json(&api::memory(&holders, &outside));
+            } else {
+                output::memory(&holders, &outside);
+            }
+            Ok(0)
+        }
+        Cmd::Memory {
+            action: Some(MemoryCmd::Quit { targets, yes }),
+            ..
+        } => quit_memory_holders(&targets, yes),
         Cmd::Top { path, n, json } => {
             let files = state::snapshot_files();
             let Some(snap) = files.first().and_then(|p| state::load::<walk::Snapshot>(p)) else {
@@ -542,6 +591,82 @@ fn man(dir: Option<&Path>) -> std::io::Result<()> {
         }
         None => clap_mangen::Man::new(Cli::command()).render(&mut std::io::stdout()),
     }
+}
+
+/// `roomy memory quit`: resolve targets against a fresh listing, confirm, quit.
+fn quit_memory_holders(targets: &[String], yes: bool) -> anyhow::Result<u8> {
+    use i18n::{t, tf};
+    use std::io::{BufRead, IsTerminal, Write};
+    if targets.is_empty() {
+        anyhow::bail!(t("memory.nothing"));
+    }
+    let holders = memory::holders(100);
+    let mut picked: Vec<&memory::Holder> = vec![];
+    for tg in targets {
+        let found = match tg.parse::<usize>() {
+            Ok(n) if n >= 1 => holders.get(n - 1),
+            _ => holders
+                .iter()
+                .find(|h| h.id == *tg || h.name.eq_ignore_ascii_case(tg)),
+        };
+        let h =
+            found.ok_or_else(|| anyhow::anyhow!(tf("memory.unknown_target", &[("target", tg)])))?;
+        if let Some(why) = &h.protected {
+            anyhow::bail!("{}: {}", h.name, why.render());
+        }
+        if !picked.iter().any(|p| p.id == h.id) {
+            picked.push(h);
+        }
+    }
+    println!("{}", t("memory.quit_plan"));
+    for h in &picked {
+        let what = h
+            .detail
+            .clone()
+            .unwrap_or_else(|| h.pids.len().to_string() + " processes");
+        println!(
+            "  {}  {}  {}",
+            sys::pad_left(&sys::fmt_mem(h.compressed), 8),
+            h.name,
+            what
+        );
+    }
+    if !yes {
+        if !std::io::stdin().is_terminal() {
+            anyhow::bail!(t("clean.need_yes"));
+        }
+        print!("{} ", t("memory.quit_confirm"));
+        std::io::stdout().flush()?;
+        let mut line = String::new();
+        std::io::stdin().lock().read_line(&mut line)?;
+        if !matches!(line.trim().to_lowercase().as_str(), "y" | "yes") {
+            println!("{}", t("clean.cancelled"));
+            return Ok(1);
+        }
+    }
+    let mut ok = true;
+    for h in picked {
+        match memory::quit(h) {
+            memory::QuitOutcome::Quit => {
+                println!("  ✓ {}", tf("memory.quit_done", &[("name", &h.name)]));
+            }
+            memory::QuitOutcome::Asked => {
+                println!("  … {}", tf("memory.quit_asked", &[("name", &h.name)]));
+            }
+            memory::QuitOutcome::Failed(e) => {
+                ok = false;
+                println!("  ✗ {}: {e}", h.name);
+            }
+        }
+    }
+    println!(
+        "{}",
+        tf(
+            "memory.swap_now",
+            &[("swap", &sys::fmt_mem(sys::mem().swap_used))]
+        )
+    );
+    Ok(if ok { 0 } else { app::EXIT_ERROR })
 }
 
 #[cfg(test)]

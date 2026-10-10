@@ -37,12 +37,14 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     match app.tab {
         Tab::Overview => draw_overview(f, app, body),
         Tab::Folders => draw_folders(f, app, body),
+        Tab::Memory => draw_memory_tab(f, app, body),
     }
     draw_footer(f, app, footer);
     match &app.mode {
         Mode::Details => draw_details(f, app),
         Mode::Help => draw_help(f, app),
         Mode::Confirm(_) => draw_confirm(f, app),
+        Mode::ConfirmQuit(h) => draw_confirm_quit(f, app, &h.clone()),
         Mode::Message(lines) => draw_message(f, app, lines.clone()),
         Mode::Working(..) | Mode::Normal => {}
     }
@@ -54,6 +56,8 @@ fn draw_header(f: &mut Frame, app: &App, area: Rect) {
         tab_span(app, Tab::Overview, &t("tui.tab_overview")),
         Span::styled("│", th.fg(th.border)),
         tab_span(app, Tab::Folders, &t("tui.tab_folders")),
+        Span::styled("│", th.fg(th.border)),
+        tab_span(app, Tab::Memory, &t("tui.tab_memory")),
     ]);
     let when = app
         .report
@@ -590,10 +594,114 @@ fn draw_folders(f: &mut Frame, app: &mut App, area: Rect) {
     f.render_stateful_widget(table, area, &mut app.folder_table);
 }
 
+fn draw_memory_tab(f: &mut Frame, app: &mut App, area: Rect) {
+    let th = app.theme;
+    let mut title = vec![
+        title_span(app, t("tui.memory_title")),
+        Span::styled(
+            format!(
+                "{} ",
+                tf("tui.memory_swap", &[("swap", &fmt_mem(app.mem.swap_used))])
+            ),
+            th.fg(if app.mem.swap_used >= 4 << 30 {
+                th.review
+            } else {
+                th.dim
+            }),
+        ),
+    ];
+    for o in &app.outside {
+        let label = match o.kind {
+            "swap" => t("outside.swap"),
+            "simulator_runtime" => tf("outside.simulator", &[("name", &o.name)]),
+            _ => o.name.clone(),
+        };
+        title.push(Span::styled(
+            format!("· {label} {} ", fmt_bytes(o.bytes)),
+            th.fg(th.dim),
+        ));
+    }
+    let block = panel(app, Line::from(title)).title_bottom(
+        Line::styled(format!(" {} ", t("tui.memory_hint")), th.fg(th.dim))
+            .alignment(Alignment::Right),
+    );
+    if app.holders.is_empty() {
+        let text = if app.holders_at.is_some() {
+            t("memory.none")
+        } else {
+            t("tui.memory_checking")
+        };
+        f.render_widget(Paragraph::new(text).block(block), area);
+        return;
+    }
+    let rows: Vec<Row> = app
+        .holders
+        .iter()
+        .map(|h| {
+            let name_style = if h.protected.is_some() {
+                th.fg(th.dim)
+            } else {
+                th.fg(th.text)
+            };
+            let note = match (&h.protected, &h.detail) {
+                (Some(why), _) => Span::styled(why.render(), th.fg(th.dim)),
+                (None, Some(d)) => Span::styled(d.clone(), th.fg(th.dim)),
+                (None, None) => Span::raw(""),
+            };
+            Row::new(vec![
+                Cell::from(Line::from(fmt_mem(h.compressed)).alignment(Alignment::Right)),
+                Cell::from(Span::styled(h.name.clone(), name_style)),
+                Cell::from(note),
+            ])
+        })
+        .collect();
+    let table = Table::new(
+        rows,
+        [
+            Constraint::Length(9),
+            Constraint::Length(24),
+            Constraint::Fill(1),
+        ],
+    )
+    .block(block)
+    .column_spacing(2)
+    .row_highlight_style(th.selected())
+    .highlight_symbol("▸");
+    f.render_stateful_widget(table, area, &mut app.memory_table);
+}
+
+fn draw_confirm_quit(f: &mut Frame, app: &App, h: &crate::memory::Holder) {
+    let th = &app.theme;
+    let mut lines = vec![Line::from(vec![
+        Span::styled(format!("{}  ", fmt_mem(h.compressed)), th.bold(th.text)),
+        Span::raw(h.name.clone()),
+    ])];
+    if let Some(d) = &h.detail {
+        lines.push(Line::styled(d.clone(), th.fg(th.dim)));
+    }
+    lines.push(Line::raw(""));
+    lines.push(Line::styled(t("tui.memory_quit_note"), th.fg(th.dim)));
+    lines.push(Line::raw(""));
+    lines.push(Line::from(vec![
+        Span::styled(" y ", th.bold(th.danger).add_modifier(Modifier::REVERSED)),
+        Span::styled(format!(" {}   ", t("tui.memory_quit_yes")), th.fg(th.text)),
+        Span::styled(" n ", th.bold(th.dim).add_modifier(Modifier::REVERSED)),
+        Span::styled(format!(" {}", t("tui.confirm_no")), th.fg(th.dim)),
+    ]));
+    popup(f, app, t("tui.memory_quit_title"), lines, 90);
+}
+
 fn draw_footer(f: &mut Frame, app: &App, area: Rect) {
     let th = &app.theme;
     let keys: Vec<(&str, String)> = match (&app.mode, app.tab) {
         (Mode::Working(..), _) => vec![("q", t("tui.key_quit"))],
+        (_, Tab::Memory) => vec![
+            ("↑↓", t("tui.key_move")),
+            ("x", t("tui.key_quit_app")),
+            ("r", t("tui.key_refresh")),
+            ("tab", t("tui.key_tab")),
+            ("q", t("tui.key_quit")),
+        ],
         (_, Tab::Folders) => vec![
             ("↑↓", t("tui.key_move")),
             ("⏎/→", t("tui.key_open")),
