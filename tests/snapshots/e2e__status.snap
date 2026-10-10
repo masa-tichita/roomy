@@ -5,6 +5,8 @@ expression: v
 {
   "alarming": "[bool]",
   "disk": {
+    "available_incl_purgeable": "[int]",
+    "available_incl_purgeable_text": "[string]",
     "free": "[int]",
     "free_text": "[string]",
     "low": false,

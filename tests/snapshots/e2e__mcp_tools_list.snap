@@ -14,7 +14,7 @@ expression: "&replies[1]"
           "openWorldHint": false,
           "readOnlyHint": true
         },
-        "description": "Free disk space, memory pressure, swap, top memory users and a summary of the last scan.",
+        "description": "Free disk space (and Finder's available space incl. purgeable), memory pressure, swap, top memory users and a summary of the last scan.",
         "inputSchema": {
           "properties": {},
           "type": "object"
@@ -29,7 +29,7 @@ expression: "&replies[1]"
           "openWorldHint": false,
           "readOnlyHint": true
         },
-        "description": "The last scan's removal candidates (id, size, safety, reasons, action) and folders that grew. Instant.",
+        "description": "The last scan's removal candidates (id, size, what removal really frees, safety, reasons, action) and folders that grew. Instant.",
         "inputSchema": {
           "properties": {},
           "type": "object"

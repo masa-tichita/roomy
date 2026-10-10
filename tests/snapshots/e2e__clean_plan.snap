@@ -4,6 +4,8 @@ expression: v
 ---
 {
   "dry_run": true,
+  "frees_bytes": "[int]",
+  "frees_text": "[string]",
   "plan": [
     {
       "action": {
@@ -16,6 +18,8 @@ expression: v
       "n": "[int]",
       "notes": [],
       "path": "~/Library/Caches/SafeApp",
+      "reclaimable": "[int]",
+      "reclaimable_text": "[string]",
       "safety": "safe",
       "size": "[string]",
       "title": "Safe cache",

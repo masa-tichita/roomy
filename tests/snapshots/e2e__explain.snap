@@ -18,6 +18,8 @@ expression: v
     "~/Library/Caches/SafeApp/a"
   ],
   "paths_total": 2,
+  "reclaimable": "[int]",
+  "reclaimable_text": "[string]",
   "safety": "safe",
   "scanned": "[int]",
   "schema": 1,

@@ -760,6 +760,19 @@ fn typed() -> Redaction {
     })
 }
 
+/// Like `typed`, but objects are kept (their fields are redacted by name).
+fn typed_if_scalar() -> Redaction {
+    insta::dynamic_redaction(|v: Content, _p: ContentPath| {
+        if v.as_i64().is_some() || v.as_u64().is_some() {
+            "[int]".into()
+        } else if v.as_str().is_some() {
+            "[string]".into()
+        } else {
+            v
+        }
+    })
+}
+
 /// A value from a fixed vocabulary that varies by machine: checked, then replaced by the list.
 fn one_of(allowed: &'static [&'static str]) -> Redaction {
     insta::dynamic_redaction(move |v: Content, p: ContentPath| {
@@ -794,11 +807,17 @@ fn list_of_objects() -> Redaction {
 const VOLATILE: &str = ".**.time, .**.scanned, .**.grew_since, .**.bytes, .**.size, .**.total, \
     .**.free, .**.free_text, .**.free_pct, .**.swap_used, .**.safe, .**.safe_text, .**.review, \
     .**.review_text, .**.total_bytes, .**.total_text, .**.freed_bytes, .**.freed_text, \
-    .**.safe_bytes, .**.review_bytes, .**.delta, .**.delta_text, .**.now, .**.n, .**.version";
+    .**.safe_bytes, .**.review_bytes, .**.delta, .**.delta_text, .**.now, .**.n, .**.version, \
+    .**.frees_bytes, .**.frees_text, .**.available_incl_purgeable, \
+    .**.available_incl_purgeable_text, .**.reclaimable_text";
+
+/// Keys that are a number on a candidate but an object of totals in the report summary.
+const VOLATILE_IF_SCALAR: &str = ".**.reclaimable";
 
 fn snapshot(name: &str, v: &serde_json::Value) {
     let mut s = insta::Settings::clone_current();
     s.add_redaction(VOLATILE, typed());
+    s.add_redaction(VOLATILE_IF_SCALAR, typed_if_scalar());
     s.add_redaction(
         ".memory.pressure",
         one_of(&["normal", "warning", "critical", "unknown"]),
