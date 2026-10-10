@@ -939,3 +939,38 @@ fn json_contract_snapshots() {
         &sb.contract(&["clean", "test.safe", "--json", "--yes"]),
     );
 }
+
+/// `roomy … | head` must end quietly, not panic, when the reader goes away (#23).
+#[test]
+fn closed_pipe_is_not_a_panic() {
+    let sb = Sandbox::new(BASE);
+    for i in 0..200 {
+        sb.file(&format!("Library/Caches/Big/f{i}"), 1);
+    }
+    let rule = "[[rules]]\nid = \"test.big\"\ntitle = \"Big\"\npaths = [\"~/Library/Caches/Big\"]\n\
+                target = \"children\"\nsafety = \"safe\"\naction = \"delete\"\nmin_mb = 0\n";
+    let cfg = fs::read_to_string(sb.home.join(".config/roomy/config.toml")).unwrap();
+    fs::write(
+        sb.home.join(".config/roomy/config.toml"),
+        format!("{cfg}{rule}"),
+    )
+    .unwrap();
+    assert!(sb.roomy(&["scan"]).status.success());
+    for args in [
+        &["report", "--json", "--full"][..],
+        &["completions", "bash"],
+        &["man"],
+    ] {
+        let mut child = sb
+            .command(args)
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .unwrap();
+        drop(child.stdout.take()); // the reader leaves before anything is read
+        let out = child.wait_with_output().unwrap();
+        let err = String::from_utf8_lossy(&out.stderr);
+        assert!(!err.contains("panicked"), "{args:?}: {err}");
+        assert_ne!(out.status.code(), Some(101), "{args:?}");
+    }
+}

@@ -225,6 +225,12 @@ enum ConfigCmd {
 }
 
 fn main() -> ExitCode {
+    // Rust ignores SIGPIPE, so writing to a closed pipe (`roomy … | head`) would panic.
+    // Restore the default like other Unix tools: the process ends quietly.
+    // SAFETY: called first in main, before any thread exists; SIG_DFL is a valid disposition.
+    unsafe {
+        libc::signal(libc::SIGPIPE, libc::SIG_DFL);
+    }
     let cli = Cli::parse();
     let cmd = cli.cmd.unwrap_or_else(|| {
         use std::io::IsTerminal;
