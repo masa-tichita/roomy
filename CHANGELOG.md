@@ -14,6 +14,11 @@ All notable changes are documented here. The format follows
   confirmation, apps with the normal Quit. System processes and roomy's own session are never
   offered. `status` shows swap and space outside home.
 
+### Fixed
+
+- "In use" checks (`skip_if_running`) match whole program names: the `xcodebuildmcp` MCP server
+  no longer counts as `xcodebuild` and turns Xcode caches into *review* (#20).
+
 ## [0.2.0] - 2026-10-11
 
 ### Added

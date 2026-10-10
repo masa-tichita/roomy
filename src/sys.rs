@@ -341,6 +341,22 @@ pub fn cmdlines() -> Vec<String> {
     .unwrap_or_default()
 }
 
+/// Whether a process command line matches a "running" pattern. A pattern containing `/` or a
+/// space is looked for anywhere (`/Xcode.app/Contents/MacOS/Xcode`). A plain name must be a whole
+/// word: the file name of a program or argument (`/usr/bin/xcodebuild`, `…/Homebrew/brew.rb`) or
+/// the last part of a Java class (`org.gradle.launcher.daemon.bootstrap.GradleDaemon`), so
+/// `xcodebuild` does not match `xcodebuildmcp`.
+pub fn cmdline_matches(cmdline: &str, pattern: &str) -> bool {
+    if pattern.contains(['/', ' ']) {
+        return cmdline.contains(pattern);
+    }
+    cmdline.split_whitespace().any(|word| {
+        let word = word.trim_matches(['"', '\'', ';', '(', ')']);
+        let name = word.rsplit('/').next().unwrap_or(word);
+        name == pattern || name.strip_suffix(pattern).is_some_and(|s| s.ends_with('.'))
+    })
+}
+
 /// Working directories of the current user's processes, for "is this worktree in use" checks.
 pub fn process_cwds() -> Vec<PathBuf> {
     let uid = uid().to_string();
@@ -659,6 +675,34 @@ pub fn pad_left(s: &str, w: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn running_patterns_match_whole_names() {
+        let m = cmdline_matches;
+        assert!(m("/usr/bin/xcodebuild -scheme App test", "xcodebuild"));
+        assert!(m("xcodebuild build", "xcodebuild"));
+        assert!(m("sh -c \"xcodebuild test\"", "xcodebuild"));
+        assert!(!m("npm exec xcodebuildmcp@latest mcp", "xcodebuild"));
+        assert!(!m(
+            "node /Users/me/.npm/_npx/1/node_modules/.bin/xcodebuildmcp mcp",
+            "xcodebuild"
+        ));
+        assert!(m(
+            "/opt/homebrew/opt/ruby/bin/ruby /opt/homebrew/Library/Homebrew/brew.rb upgrade",
+            "brew.rb"
+        ));
+        assert!(m(
+            "java -cp x.jar org.gradle.launcher.daemon.bootstrap.GradleDaemon 8.5",
+            "GradleDaemon"
+        ));
+        assert!(!m("java MyGradleDaemonTool", "GradleDaemon"));
+        // Patterns with a path or a space are looked for anywhere.
+        assert!(m(
+            "/Applications/Xcode.app/Contents/MacOS/Xcode -psn_0",
+            "/Xcode.app/Contents/MacOS/Xcode"
+        ));
+        assert!(m("/Users/me/.cargo/bin/cargo build", "/cargo "));
+    }
 
     #[test]
     fn pmset_on_battery() {

@@ -36,7 +36,9 @@ impl Ctx<'_> {
     }
 
     pub fn running(&self, needle: &str) -> bool {
-        self.cmdlines.iter().any(|c| c.contains(needle))
+        self.cmdlines
+            .iter()
+            .any(|c| crate::sys::cmdline_matches(c, needle))
     }
 
     pub fn cwds(&self) -> &[PathBuf] {

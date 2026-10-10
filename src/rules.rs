@@ -57,7 +57,8 @@ pub struct Rule {
     /// Commands that must exist for the rule to apply.
     #[serde(default)]
     pub requires: Vec<String>,
-    /// If any process command line contains one of these, the candidate becomes "review".
+    /// If a process matches one of these, the candidate becomes "review" (see
+    /// [`crate::sys::cmdline_matches`]).
     #[serde(default)]
     pub skip_if_running: Vec<String>,
     /// File (relative to the matched path) whose modification time tells when it was last used.
@@ -211,11 +212,7 @@ fn evaluate(ctx: &Ctx, rule: &Rule) -> Option<Candidate> {
 
     let mut safety = ov.safety.unwrap_or(rule.safety);
     let mut evidence = vec![];
-    if let Some(p) = rule
-        .skip_if_running
-        .iter()
-        .find(|p| ctx.cmdlines.iter().any(|c| c.contains(p.as_str())))
-    {
+    if let Some(p) = rule.skip_if_running.iter().find(|p| ctx.running(p)) {
         safety = Safety::Review;
         evidence.push(mf("rule.running", &[("what", p)]));
     }

@@ -56,6 +56,10 @@ skip_if_running = ["/Example.app/Contents/MacOS/Example"]
 note = { en = "Downloaded again when needed.", ja = "必要になれば再ダウンロードされる。" }
 ```
 
+`skip_if_running` patterns containing `/` or a space match anywhere in a process's command line;
+plain names (`xcodebuild`, `brew.rb`, `GradleDaemon`) must be a whole program, file or Java class
+name, so `xcodebuild` does not match `xcodebuildmcp`.
+
 Choosing `safety`:
 
 - **safe** — the data comes back by itself or is re-downloaded, with no loss beyond time.
