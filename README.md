@@ -101,6 +101,11 @@ disabled_detectors = ["docker"]              # cache xcode versioned editor work
 disk_warn_gb = 50
 disk_critical_gb = 25
 
+[service]
+quiet_hours = [23, 7]        # no non-urgent notifications at night
+memory_alerts = false        # only disk alerts
+# notifications = false      # keep checking and recording history, never notify
+
 [worktrees]
 roots = ["~/dev", "~/work"]
 managed = [{ path = "~/orca/workspaces", name = "Orca" }]   # shown as a hint

@@ -17,6 +17,8 @@ struct AgentState {
     /// alert key -> last time it was sent
     notified: BTreeMap<String, i64>,
     last_scan_attempt: Option<i64>,
+    #[serde(default)]
+    last_pressure: Option<i64>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -40,10 +42,13 @@ pub struct Alert {
 
 const HOUR: i64 = 3600;
 
+/// `prev_pressure`: the memory pressure at the previous check. A "warning" level must last two
+/// checks in a row before it is reported; macOS reaches it briefly under normal load.
 pub fn alerts(
     cfg: &Config,
     s: &Sample,
     prev: Option<(u64, i64)>,
+    prev_pressure: Option<i64>,
     top: &[sys::AppMem],
 ) -> Vec<Alert> {
     let th = &cfg.thresholds;
@@ -101,7 +106,7 @@ pub fn alerts(
             cooldown: HOUR / 2,
             urgent: true,
         }),
-        2 => v.push(Alert {
+        2 if prev_pressure.is_some_and(|p| p >= 2) => v.push(Alert {
             key: "mem_warn",
             title: t("tick.mem_warn"),
             body: tf("tick.mem_body", &[("apps", &apps)]),
@@ -121,6 +126,9 @@ pub fn alerts(
             cooldown: 6 * HOUR,
             urgent: false,
         });
+    }
+    if !cfg.service.memory_alerts {
+        v.retain(|a| !matches!(a.key, "mem_warn" | "mem_critical" | "swap"));
     }
     v
 }
@@ -206,9 +214,10 @@ pub fn run(cfg: &Config) -> anyhow::Result<()> {
         vec![]
     };
     let quiet = in_quiet_hours(cfg.service.quiet_hours, chrono::Local::now().hour());
+    let muted = !cfg.service.notifications || sys::notifications_disabled();
     let mut sent = vec![];
-    for a in alerts(cfg, &sample, prev, &top) {
-        if quiet && !a.urgent {
+    for a in alerts(cfg, &sample, prev, st.last_pressure, &top) {
+        if muted || (quiet && !a.urgent) {
             continue;
         }
         if now - st.notified.get(a.key).copied().unwrap_or(0) >= a.cooldown {
@@ -219,6 +228,7 @@ pub fn run(cfg: &Config) -> anyhow::Result<()> {
     }
     st.last_avail = Some(disk.avail);
     st.last_time = Some(now);
+    st.last_pressure = Some(mem.pressure);
 
     let mut scanned = String::new();
     if scan_due(cfg, &st, now) {
@@ -233,6 +243,7 @@ pub fn run(cfg: &Config) -> anyhow::Result<()> {
                 );
                 if let Some(body) = daily_summary(cfg, &r)
                     && !quiet
+                    && !muted
                     && now - st.notified.get("daily").copied().unwrap_or(0) >= 20 * HOUR
                 {
                     sys::notify(&t("tick.daily_title"), &body);
@@ -277,10 +288,13 @@ mod tests {
     #[test]
     fn disk_levels() {
         let cfg = Config::default();
-        assert!(alerts(&cfg, &sample(100), None, &[]).is_empty());
-        assert_eq!(keys(&alerts(&cfg, &sample(40), None, &[])), ["disk_warn"]);
+        assert!(alerts(&cfg, &sample(100), None, None, &[]).is_empty());
         assert_eq!(
-            keys(&alerts(&cfg, &sample(10), None, &[])),
+            keys(&alerts(&cfg, &sample(40), None, None, &[])),
+            ["disk_warn"]
+        );
+        assert_eq!(
+            keys(&alerts(&cfg, &sample(10), None, None, &[])),
             ["disk_critical"]
         );
     }
@@ -290,9 +304,9 @@ mod tests {
         let cfg = Config::default();
         let now = sample(100);
         let recent = Some((115 * 1_000_000_000, now.t - 900));
-        assert_eq!(keys(&alerts(&cfg, &now, recent, &[])), ["disk_drop"]);
+        assert_eq!(keys(&alerts(&cfg, &now, recent, None, &[])), ["disk_drop"]);
         let long_ago = Some((115 * 1_000_000_000, now.t - 86_400));
-        assert!(alerts(&cfg, &now, long_ago, &[]).is_empty());
+        assert!(alerts(&cfg, &now, long_ago, None, &[]).is_empty());
     }
 
     #[test]
@@ -301,7 +315,33 @@ mod tests {
         let mut s = sample(100);
         s.pressure = 4;
         s.swap = 5_000_000_000;
-        assert_eq!(keys(&alerts(&cfg, &s, None, &[])), ["mem_critical", "swap"]);
+        assert_eq!(
+            keys(&alerts(&cfg, &s, None, None, &[])),
+            ["mem_critical", "swap"]
+        );
+    }
+
+    #[test]
+    fn memory_warning_must_last_two_checks() {
+        let cfg = Config::default();
+        let mut s = sample(100);
+        s.pressure = 2;
+        assert!(
+            alerts(&cfg, &s, None, None, &[]).is_empty(),
+            "first warning sample: wait"
+        );
+        assert!(alerts(&cfg, &s, None, Some(1), &[]).is_empty());
+        assert_eq!(keys(&alerts(&cfg, &s, None, Some(2), &[])), ["mem_warn"]);
+    }
+
+    #[test]
+    fn memory_alerts_can_be_turned_off() {
+        let mut cfg = Config::default();
+        cfg.service.memory_alerts = false;
+        let mut s = sample(10);
+        s.pressure = 4;
+        s.swap = 9_000_000_000;
+        assert_eq!(keys(&alerts(&cfg, &s, None, None, &[])), ["disk_critical"]);
     }
 
     #[test]

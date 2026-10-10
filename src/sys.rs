@@ -469,7 +469,15 @@ pub fn notifier() -> &'static str {
     }
 }
 
+/// `ROOMY_NO_NOTIFY=1` silences every notification (the test sandbox sets it).
+pub fn notifications_disabled() -> bool {
+    std::env::var("ROOMY_NO_NOTIFY").is_ok_and(|v| !v.is_empty() && v != "0")
+}
+
 pub fn notify(subtitle: &str, body: &str) {
+    if notifications_disabled() {
+        return;
+    }
     let t = Duration::from_secs(10);
     if let Some(tn) = which("terminal-notifier") {
         let group = format!("{}-{subtitle}", crate::app::NAME);

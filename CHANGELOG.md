@@ -8,6 +8,17 @@ All notable changes are documented here. The format follows
 
 ### Added
 
+- `[service] notifications = false` mutes the background service without stopping it;
+  `[service] memory_alerts = false` keeps only disk alerts. `ROOMY_NO_NOTIFY=1` mutes everything.
+
+### Changed
+
+- A memory "warning" is reported only when it lasts two checks in a row (critical: at once).
+
+### Fixed
+
+- End-to-end tests no longer send real notifications.
+
 - `status`, `scan`, `report`, `clean`, `top`, `history`, `rules`, `config`, `doctor` commands.
 - Interactive dashboard (`roomy` in a terminal, or `roomy ui`) with candidate selection and removal.
 - Detectors for git worktrees, Xcode leftovers, package caches, app caches, old tool versions,

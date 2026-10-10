@@ -139,6 +139,10 @@ pub struct Service {
     pub min_battery_pct: u32,
     /// Hours (0-23) during which no notifications are sent, e.g. [23, 7].
     pub quiet_hours: Option<[u32; 2]>,
+    /// `false`: keep checking and recording history, but never notify.
+    pub notifications: bool,
+    /// `false`: no memory-pressure or swap notifications (disk alerts still come).
+    pub memory_alerts: bool,
 }
 
 impl Default for Config {
@@ -249,6 +253,8 @@ impl Default for Service {
             daily_scan: true,
             min_battery_pct: 50,
             quiet_hours: None,
+            notifications: true,
+            memory_alerts: true,
         }
     }
 }

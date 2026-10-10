@@ -32,7 +32,8 @@ impl Sandbox {
             .env_remove("XDG_CONFIG_HOME")
             .env_remove("ROOMY_CONFIG_DIR")
             .env_remove("ROOMY_STATE_DIR")
-            .env("NO_COLOR", "1");
+            .env("NO_COLOR", "1")
+            .env("ROOMY_NO_NOTIFY", "1"); // never pop up real notifications from tests
         cmd
     }
 
