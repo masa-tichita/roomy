@@ -4,6 +4,11 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    # Wait before adopting new releases: hijacked or broken versions are usually yanked
+    # within days. Security updates are not delayed.
+    cooldown:
+      default-days: 7
+      semver-major-days: 14
     groups:
       minor-and-patch:
         update-types: [minor, patch]
@@ -11,6 +16,8 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 7
     ignore:
       # `@stable` and `@1.88` select Rust toolchains (the MSRV job), not action versions.
       - dependency-name: dtolnay/rust-toolchain
