@@ -24,25 +24,28 @@ jobs:
     runs-on: macos-latest
     env:
       TAG: ${{ inputs.tag }}
-      TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+      TAP_KEY: ${{ secrets.HOMEBREW_TAP_DEPLOY_KEY }}
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v7
 
-      - name: Check the tap token
+      - name: Set up the tap deploy key
         run: |
-          token=$(printf '%s' "$TAP_TOKEN" | tr -d '[:space:]')
-          if [ -z "$token" ]; then
-            echo "::error::secret HOMEBREW_TAP_TOKEN is missing or empty (see RELEASING.md)"
+          set -euo pipefail
+          if [ -z "$TAP_KEY" ]; then
+            echo "::error::secret HOMEBREW_TAP_DEPLOY_KEY is missing (see RELEASING.md)"
             exit 1
           fi
-          # Try the token with git itself before doing anything else. (The REST API's
-          # `permissions` field describes the account, not a fine-grained token, so it can't tell
-          # whether the token was granted this repository.)
-          auth=$(printf 'x-access-token:%s' "$token" | base64 | tr -d '\n')
-          if ! git -c http.https://github.com/.extraheader="AUTHORIZATION: basic $auth" \
-              ls-remote https://github.com/masa-tichita/homebrew-tap.git HEAD >/dev/null 2>&1; then
-            echo "::error::HOMEBREW_TAP_TOKEN cannot access masa-tichita/homebrew-tap: check that the token is valid and that its repository access includes homebrew-tap with Contents: Read and write (see RELEASING.md)"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$TAP_KEY" > ~/.ssh/tap_key && chmod 600 ~/.ssh/tap_key
+          # GitHub's host keys from its API (over HTTPS), not from the network path being checked.
+          gh api meta --jq '.ssh_keys[]' | sed 's/^/github.com /' > ~/.ssh/github_known_hosts
+          echo "GIT_SSH_COMMAND=ssh -i $HOME/.ssh/tap_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$HOME/.ssh/github_known_hosts" >> "$GITHUB_ENV"
+
+      - name: Check access to the tap
+        run: |
+          if ! git ls-remote git@github.com:masa-tichita/homebrew-tap.git HEAD >/dev/null; then
+            echo "::error::the deploy key cannot reach masa-tichita/homebrew-tap; check its deploy keys (see RELEASING.md)"
             exit 1
           fi
 
@@ -60,12 +63,7 @@ jobs:
       - name: Push it to masa-tichita/homebrew-tap
         run: |
           set -euo pipefail
-          # A token pasted from the clipboard often ends with a newline; strip whitespace, and pass
-          # it in a header instead of the URL so it never shows up in git's remote config.
-          token=$(printf '%s' "$TAP_TOKEN" | tr -d '[:space:]')
-          auth=$(printf 'x-access-token:%s' "$token" | base64 | tr -d '\n')
-          git config --global http.https://github.com/.extraheader "AUTHORIZATION: basic $auth"
-          git clone https://github.com/masa-tichita/homebrew-tap.git tap
+          git clone git@github.com:masa-tichita/homebrew-tap.git tap
           mkdir -p tap/Formula
           cp roomy.rb tap/Formula/roomy.rb
           cd tap

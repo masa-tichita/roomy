@@ -36,9 +36,18 @@ gh workflow run homebrew.yml -f tag=vX.Y.Z
 
 ## One-time setup
 
-The tap update needs a repository secret `HOMEBREW_TAP_TOKEN`: a fine-grained personal access
-token with **Contents: Read and write** on `masa-tichita/homebrew-tap` only. Without it the
-release is still published and the Homebrew workflow fails with a clear error.
+The Homebrew workflow pushes to the tap with a **deploy key**: an SSH key that can write to
+`masa-tichita/homebrew-tap` and nothing else, and never expires.
+
+```sh
+ssh-keygen -t ed25519 -N "" -C "roomy release workflow -> homebrew-tap" -f tapkey
+gh repo deploy-key add tapkey.pub -R masa-tichita/homebrew-tap --allow-write --title "roomy release workflow"
+gh secret set HOMEBREW_TAP_DEPLOY_KEY -R masa-tichita/roomy < tapkey
+rm tapkey tapkey.pub
+```
+
+To rotate it, delete the old deploy key in the tap's settings and repeat. Without the secret
+the release is still published and the Homebrew workflow fails with a clear error.
 
 ## Verify a release
 
