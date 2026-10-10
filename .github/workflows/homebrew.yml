@@ -49,7 +49,13 @@ jobs:
 
       - name: Push it to masa-tichita/homebrew-tap
         run: |
-          git clone "https://x-access-token:${TAP_TOKEN}@github.com/masa-tichita/homebrew-tap.git" tap
+          set -euo pipefail
+          # A token pasted from the clipboard often ends with a newline; strip whitespace, and pass
+          # it in a header instead of the URL so it never shows up in git's remote config.
+          token=$(printf '%s' "$TAP_TOKEN" | tr -d '[:space:]')
+          auth=$(printf 'x-access-token:%s' "$token" | base64 | tr -d '\n')
+          git config --global http.https://github.com/.extraheader "AUTHORIZATION: basic $auth"
+          git clone https://github.com/masa-tichita/homebrew-tap.git tap
           mkdir -p tap/Formula
           cp roomy.rb tap/Formula/roomy.rb
           cd tap
