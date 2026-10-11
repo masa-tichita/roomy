@@ -6,6 +6,8 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-10-11
+
 ### Fixed
 
 - `roomy memory` can quit apps whose main process starts with a bare name instead of a path
@@ -107,7 +109,8 @@ First release.
   on GitHub Releases and the Homebrew tap (`brew install masa-tichita/tap/roomy`), including shell
   completions and manual pages.
 
-[Unreleased]: https://github.com/masa-tichita/roomy/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/masa-tichita/roomy/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/masa-tichita/roomy/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/masa-tichita/roomy/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/masa-tichita/roomy/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/masa-tichita/roomy/releases/tag/v0.1.0
