@@ -375,6 +375,20 @@ pub fn process_cwds() -> Vec<PathBuf> {
     .unwrap_or_default()
 }
 
+/// Full path of a process's executable (`proc_pidpath`). Unlike `ps -o comm`, which shows
+/// `argv[0]`, this is right for apps started with a bare name. None for processes of other users
+/// or ones that already exited.
+pub fn pid_path(pid: i32) -> Option<String> {
+    let mut buf = vec![0u8; libc::PROC_PIDPATHINFO_MAXSIZE as usize];
+    // SAFETY: the buffer is writable for the length passed, and the kernel writes at most that
+    // many bytes; the return value is the length written, or <= 0 on failure.
+    let n =
+        unsafe { libc::proc_pidpath(pid, buf.as_mut_ptr().cast(), u32::try_from(buf.len()).ok()?) };
+    let n = usize::try_from(n).ok().filter(|&n| n > 0)?;
+    buf.truncate(n);
+    String::from_utf8(buf).ok()
+}
+
 /// The current user's id.
 pub fn uid() -> u32 {
     // SAFETY: getuid has no preconditions and cannot fail.

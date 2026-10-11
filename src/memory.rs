@@ -39,7 +39,7 @@ pub struct Holder {
 struct Proc {
     ppid: i32,
     uid: u32,
-    /// Full executable path (`ps -o comm`).
+    /// Full executable path: `ps -o comm`, or `proc_pidpath` when that is only a bare name.
     exe: String,
 }
 
@@ -59,7 +59,12 @@ fn processes() -> HashMap<i32, Proc> {
             let pid = it.next()?.parse().ok()?;
             let ppid = it.next()?.parse().ok()?;
             let uid = it.next()?.parse().ok()?;
-            let exe = it.collect::<Vec<_>>().join(" ");
+            let mut exe = it.collect::<Vec<_>>().join(" ");
+            // `comm` is argv[0]; some apps (Circleback) start their main process with a bare
+            // name, which would hide it from `is_main_executable`.
+            if !exe.starts_with('/') {
+                exe = sys::pid_path(pid).unwrap_or(exe);
+            }
             Some((pid, Proc { ppid, uid, exe }))
         })
         .collect()
@@ -411,6 +416,22 @@ pub fn quit(h: &Holder) -> QuitOutcome {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn processes_started_with_a_bare_name_get_their_full_path() {
+        use std::os::unix::process::CommandExt;
+        // Like Circleback's main process: argv[0] is only a name.
+        let mut child = std::process::Command::new("/bin/sleep")
+            .arg0("Circleback")
+            .arg("30")
+            .spawn()
+            .unwrap();
+        let pid = i32::try_from(child.id()).unwrap();
+        let exe = processes().remove(&pid).map(|p| p.exe);
+        child.kill().unwrap();
+        child.wait().unwrap();
+        assert_eq!(exe.as_deref(), Some("/bin/sleep"));
+    }
 
     #[test]
     fn top_sizes() {

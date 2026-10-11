@@ -6,6 +6,12 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- `roomy memory` can quit apps whose main process starts with a bare name instead of a path
+  (Circleback): executables are read with `proc_pidpath` when `ps` shows only a name. Such apps
+  were listed as having no main process to quit (#30).
+
 ## [0.3.0] - 2026-10-11
 
 ### Added
